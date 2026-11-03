@@ -7,6 +7,12 @@ description: Make or revise a narrated explainer video from a topic, script, rec
 
 Use the bundled CLI at `python <plugin-root>/scripts/explainer.py` (the plugin root is `../..` from this file). Keep the creative decisions and review in the chat. If no creator profile exists, run the [setup skill](../setup/SKILL.md) first.
 
+## Short-form video safe zones
+
+Keep all text and visual elements within the short-form video safe zone, away from platform UI overlays and screen edges.
+
+For portrait/short-form videos, apply this constraint when planning and reviewing each storyboard scene, including headlines, captions, labels, illustrations, and the presenter. Reserve extra space near the top and bottom and along the right edge for platform controls, descriptions, and captions. Avoid placing essential content in those areas. Treat safe zones as platform-dependent rather than assuming one fixed inset fits every app. During portrait preview review, check the actual composition against the intended platform's UI overlays; reposition or resize elements and reapprove the storyboard before final rendering if anything important is obscured. A prompt alone does not guarantee pixel-level compliance.
+
 ## Film workflow
 
 1. Ask for the topic, target audience, desired length, and any facts or sources the user wants included. Infer reasonable defaults from the request. Research claims when facts could have changed. Write a short script in the saved language and speaking style, with one paragraph per scene. Show it in chat and wait for the user's approval before generating narration.

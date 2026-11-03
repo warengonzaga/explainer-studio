@@ -1,0 +1,44 @@
+name: Validate Explainer Studio
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -e .
+      - name: CLI smoke test
+        run: python scripts/explainer.py --help
+      - name: Validate plugin and skill manifests
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('.')
+          plugin = json.loads((root / 'plugin.json').read_text())
+          assert plugin['name'] == 'explainer-studio'
+          assert (root / plugin['extensions']['com.openai']['onboardingSkill']).is_file()
+          for skill in (root / 'skills').glob('*/SKILL.md'):
+              text = skill.read_text()
+              assert text.startswith('---\n'), f'Missing frontmatter: {skill}'
+              assert '\nname:' in text and '\ndescription:' in text, f'Incomplete frontmatter: {skill}'
+          safe_zone = (root / 'skills/create-explainer/SKILL.md').read_text()
+          assert 'Keep all text and visual elements within the short-form video safe zone' in safe_zone
+          print('Plugin and skill validation passed')
+          PY
+      - name: Run workflow tests
+        run: python -m unittest discover -s tests -v
