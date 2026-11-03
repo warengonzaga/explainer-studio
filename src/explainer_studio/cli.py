@@ -14,6 +14,7 @@ from .avatar import copy_pack, preview_avatar, preview_pack, validate_pack
 from .common import ProjectError, command, probe_duration, project_file, read_json, write_json
 from .quality import contact_sheet, sync_check
 from .render import render, storyboard_hash
+from .hyperframes import export_hyperframes
 from .timing import build_storyboard, import_words, transcribe, validate_storyboard
 
 
@@ -397,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
     p.set_defaults(handler=render_command)
+    p = sub.add_parser("export-hyperframes", help="export approved storyboard to an editable HyperFrames/GSAP project")
+    p.add_argument("project")
+    p.add_argument("--portrait", action="store_true")
+    p.set_defaults(handler=lambda a: print(export_hyperframes(Path(a.project), portrait=a.portrait)))
     p = sub.add_parser("check", help="validate a rendered video's basic timing")
     p.add_argument("project")
     p.add_argument("video")
