@@ -1,0 +1,11 @@
+{
+  "name": "explainer-studio-local",
+  "plugins": [
+    {
+      "name": "explainer-studio",
+      "source": {"source": "local", "path": "./"},
+      "policy": {"installation": "AVAILABLE", "authentication": "ON_USE"},
+      "category": "Entertainment"
+    }
+  ]
+}

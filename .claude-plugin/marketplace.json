@@ -1,0 +1,12 @@
+{
+  "name": "explainer-studio-local",
+  "description": "Explainer Studio plugin",
+  "owner": {"name": "Explainer Studio"},
+  "plugins": [
+    {
+      "name": "explainer-studio",
+      "source": "./",
+      "description": "Create narrated explainer videos from chat"
+    }
+  ]
+}
