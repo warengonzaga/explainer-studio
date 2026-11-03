@@ -11,7 +11,7 @@ Ask the user one short grouped set of questions:
 
 1. Brand name and narration language. Logo, colors, and output folder are optional; offer defaults.
 2. Voice route: attach their recording, or use their ElevenLabs voice with an API key set privately as `ELEVENLABS_API_KEY` and a voice ID. Never require a voice clone. The selected route must work before the first render.
-3. Avatar: the original built-in geometric presenter, or a user-owned sprite pack. For a custom pack, run `avatar-preview-pack <pack> --output <image>`, show the contact sheet in chat, and get approval before saving it. See [avatar pack guide](../avatar/references/pack.md).
+3. Avatar: the original built-in geometric presenter, the bundled **Waren (sample)** at `<plugin-root>/assets/avatars/waren`, or a user-owned sprite pack. For Waren or a custom pack, run `avatar-preview-pack <pack> --output <image>`, show the contact sheet in chat, and get approval before saving it. See [avatar pack guide](../avatar/references/pack.md).
 
 Save only the answers needed through `python <plugin-root>/scripts/explainer.py setup --brand ... --language ... --voice-route ... --avatar ... --output-dir ...`; add `--avatar-pack`, `--logo`, colors, and `--cta` when chosen. If a profile exists, show the current non-secret choices with `profile`, ask only what should change, and use `--force` for the intentional update. The profile lives at `EXPLAINER_STUDIO_HOME/profile.json`, or `~/.explainer-studio/profile.json` by default. Keep every response and setup result in the chat.
 

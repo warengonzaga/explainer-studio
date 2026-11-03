@@ -67,23 +67,26 @@ def setup(args) -> None:
             shutil.copy2(source, destination)
     avatar = args.avatar or old.get("avatar") or "built-in"
     avatar_pack = old.get("avatar_pack")
+    avatar_name = old.get("avatar_name", "Built-in")
     if args.avatar_pack:
         source = Path(args.avatar_pack).expanduser().resolve()
-        validate_pack(source.parent, source.name)
+        manifest = validate_pack(source.parent, source.name)
         destination = home() / "assets" / "avatar"
         if source != destination.resolve():
             if destination.exists():
                 shutil.rmtree(destination)
             copy_pack(source, destination)
         avatar, avatar_pack = "custom", "assets/avatar"
+        avatar_name = manifest.get("name", "Custom")
     elif args.avatar == "built-in":
         avatar_pack = None
+        avatar_name = "Built-in"
     if avatar == "custom" and not avatar_pack:
         raise ProjectError("custom avatar requires --avatar-pack")
     profile = {
         "version": 1, "brand": brand, "language": args.language or old.get("language") or "en",
         "voice_route": voice_route, "voice_id": voice_id,
-        "avatar": avatar, "avatar_pack": avatar_pack,
+        "avatar": avatar, "avatar_name": avatar_name, "avatar_pack": avatar_pack,
         "output_dir": str(Path(args.output_dir or old.get("output_dir") or "~/Explainer Studio").expanduser().resolve()),
         "colors": colors, "logo": logo, "cta": args.cta or old.get("cta") or "",
     }
