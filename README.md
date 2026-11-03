@@ -32,7 +32,7 @@ For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`
 
 Choose a recording you attach to chat or an ElevenLabs voice. For generated narration, set `ELEVENLABS_API_KEY` in the environment and provide a voice ID. No voice clone is required.
 
-Choose the built-in presenter, the bundled **Waren** sample avatar, or a sprite pack you own. The Waren pack is based on the creator's supplied avatar references and includes four poses and five mouth states. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
+Choose the built-in presenter, the bundled **Waren** sample avatar, or a sprite pack you own. The Waren pack is based on the creator's supplied avatar references and includes four poses and five mouth states, with pose-specific mouth fitting for `present` and `celebrate`. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
 
 ## 🧭 Workflow
 

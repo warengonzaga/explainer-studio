@@ -14,6 +14,9 @@ Optional `name` metadata identifies a pack in the creator profile. The bundled W
   },
   "mouth_anchor": [0.5, 0.34],
   "mouth_width": 0.13,
+  "mouth_fit": {
+    "present": {"anchor": [0.5, 0.31], "width": 0.13, "scale": 0.85}
+  },
   "mouths": {
     "closed": "mouth-closed.png",
     "small": "mouth-small.png",
@@ -23,4 +26,4 @@ Optional `name` metadata identifies a pack in the creator profile. The bundled W
 }
 ```
 
-`mouth_anchor` is `[x, y]` measured from the top-left of the visible fitted sprite, each value from 0 to 1. `mouth_width` is the fraction of sprite width used for a patch. Mouth images are optional; if absent, the engine draws simple mouth shapes on the avatar. For clean results, supply pose artwork with a neutral face and transparent mouth patches. The rendered lips follow the voice's loudness, not phonemes.
+`mouth_anchor` is `[x, y]` measured from the top-left of the visible fitted sprite, each value from 0 to 1. `mouth_width` is the fraction of sprite width used for a patch. Use optional `mouth_fit.<pose>.anchor`, `width`, and `scale` to tune a pose; pose-specific `mouths` can override individual patch files when the face angle or proportions change. This follows the reference workflow's per-pose fitting: review each pose/mouth combination, then tune only the poses that need it. A scale around `0.85` can soften open shapes that look too large. Mouth images are optional; if absent, the engine draws simple mouth shapes on the avatar. For clean results, supply pose artwork with a neutral face and transparent mouth patches. The rendered lips follow the voice's loudness, not phonemes.
