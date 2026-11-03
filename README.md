@@ -28,6 +28,28 @@ Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, 
 
 For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`. Codex supports local marketplace installation from this repository.
 
+## 🎞️ HyperFrames + GSAP motion-graphics export (optional)
+
+Explainer Studio supports an editable HTML-native rendering path alongside the existing Pillow/FFmpeg renderer. The original Python renderer remains the default, including the built-in presenter and loudness-driven mouth animation. The HyperFrames export currently provides animated headlines, scene cards, source-word captions, optional scene images, and narration; it does **not yet** recreate the Python presenter's lip animation.
+
+After the script, word timings, storyboard, and explicit approval:
+
+```bash
+python scripts/explainer.py export-hyperframes /path/to/project --portrait
+cd /path/to/project/hyperframes-portrait
+npm install
+npm run lint
+npm run preview
+# After visually reviewing the preview:
+npm run render
+```
+
+Requires Node.js 22+, FFmpeg/ffprobe, and Chrome/Chromium in addition to Python. The generated project's `package.json` pins HyperFrames 0.7.109 and GSAP 3.14.2, following the versions documented by Herk Edit Kit. Commit a lockfile for a reproducible local installation when desired. No remote GSAP CDN is used; the generated composition references its local npm installation. The exporter refuses to overwrite an existing composition directory. `--portrait` uses conservative top, right, and bottom UI margins, but review the actual platform overlays before publishing.
+
+HyperFrames HTML is editable: use the CLI preview to review timing and motion, then lint, render, and run `explainer check` on the MP4. Do not treat structural lint as visual approval. The storyboard and voice remain the timing source; original source media is preserved.
+
+Reference implementations: [HyperFrames](https://github.com/heygen-com/hyperframes), [Herk Edit Kit](https://github.com/nateherkai/herk-edit-kit), and [Talking Explainer](https://github.com/brewed-ops/talking-explainer). Their workflow ideas informed this integration; no third-party templates or assets are copied.
+
 ## 🎙️ Voice and avatars
 
 Choose a recording you attach to chat or an ElevenLabs voice. For generated narration, set `ELEVENLABS_API_KEY` in the environment and provide a voice ID. No voice clone is required.
