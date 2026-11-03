@@ -3,13 +3,13 @@
   "poses": {
     "idle": "idle.png",
     "present": "present.png",
-    "point": "point.png",
+    "point": "point-gaze.png",
     "celebrate": "celebrate.png"
   },
   "blinks": {
     "idle": "idle-blink.png",
     "present": "present-blink.png",
-    "point": "point-blink.png",
+    "point": "point-gaze-blink.png",
     "celebrate": "celebrate-blink.png"
   },
   "mouth_anchor": [
