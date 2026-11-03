@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build release and changelog
+        uses: wgtechlabs/release-build-flow-action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          main-branch: main
+          changelog-path: ./CHANGELOG.md
+          sync-version-files: true
+          update-major-tag: false

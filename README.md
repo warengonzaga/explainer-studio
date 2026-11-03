@@ -1,56 +1,62 @@
-# Explainer Studio
+![Explainer Studio — Make explainer videos from chat](https://ghrb.waren.build/render/banner?header=Explainer%20Studio&subheader=Make%20explainer%20videos%20from%20chat&bg=101827-243b53&color=FFFFFF&stats=false)
 
-Explainer Studio is a local plugin for creating narrated explainer videos from Codex or Claude Code chat. Its skills handle the creator setup, script and storyboard review, avatar preparation, and revision. A bundled Python tool handles word timing, audio-reactive mouth animation, scene composition, and MP4 rendering. The project is an independent implementation inspired by the workflow in [Talking Explainer](https://github.com/brewed-ops/talking-explainer); it does not contain that project's code or artwork.
+## 🎬 Overview
 
-## Creator experience
+Explainer Studio is a local plugin for making narrated explainer videos from Codex or Claude Code chat. It guides you from topic and script through voice timing, storyboard review, preview, and MP4 delivery. The implementation and bundled presenter are original; [Talking Explainer](https://github.com/brewed-ops/talking-explainer) informed the workflow.
 
-1. Install the plugin and run **Set up Explainer Studio**. The setup skill checks the machine and asks for brand/language, voice route, and avatar. Settings are saved in `~/.explainer-studio/profile.json` (or `EXPLAINER_STUDIO_HOME`). API keys are never stored there.
-2. Ask the plugin to make an explainer about a topic. Review the script in chat. The voice route is either an attached recording or an ElevenLabs voice configured by the user.
-3. The plugin times spoken words, plans one scene per script paragraph, and shows the storyboard for approval. It then renders a small preview for in-chat review and a final MP4 after revisions.
-4. A user can provide a custom sprite pack or use the original geometric presenter included in the renderer. An avatar contact sheet makes mouth and pose placement reviewable.
+## ✨ Features
 
-The same project can produce a 16:9 film and a separate 9:16 output. A new take creates a new retimed project so the previous render stays intact. The built-in mouth shapes follow voice loudness, not phonemes.
+- Chat guided first run for brand, language, voice route, and avatar.
+- Use your own narration or generate speech with ElevenLabs.
+- Create and review word timed storyboards before rendering.
+- Use an original geometric presenter or prepare a custom sprite pack.
+- Render landscape or portrait video locally and run basic media checks.
+- Keep prior narration and renders intact when creating a new take.
 
-## Requirements
+Lip movement follows voice loudness; it is not phoneme accurate. Automatic transcription and ElevenLabs require their optional runtime and account credentials.
 
-- Python 3.11+
-- FFmpeg and ffprobe on `PATH`
-- Pillow (`pip install -e .`)
-- `faster-whisper` for automatic word timing (`pip install -e ".[transcribe]"`); a reviewed `words.json` can be imported instead
-- Optional ElevenLabs account and `ELEVENLABS_API_KEY` for generated narration
+## 🚀 Quick start
 
-Run `python scripts/explainer.py doctor` for a machine check. Automatic transcription downloads a model on first use. Rendering, custom images, and the default avatar run locally.
+Requirements: Python 3.11+, FFmpeg, and ffprobe. Install Pillow and the CLI:
 
-## Plugin installation
-
-The root `plugin.json` and `.codex-plugin/plugin.json` package the Codex skills and onboarding skill. `.claude-plugin/plugin.json` packages the same skills for Claude Code. The marketplace files support local development; a future private GitHub release can be registered as a marketplace by users with repository access.
-
-For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`. For Codex, add the repo's local marketplace to the plugin browser. In either host, invoke the setup skill once, then ask in chat for an explainer. No separate editing application is required.
-
-## CLI reference
-
-The chat skills call these commands; users can also run them directly for troubleshooting:
-
-```text
+```bash
+python -m pip install -e .
 python scripts/explainer.py doctor
-python scripts/explainer.py setup --brand "My Brand" --language en --voice-route recording
-python scripts/explainer.py init projects/my-film --title "My Film"
-python scripts/explainer.py attach-voice projects/my-film narration.mp3
-python scripts/explainer.py transcribe projects/my-film
-python scripts/explainer.py storyboard projects/my-film
-python scripts/explainer.py approve projects/my-film
-python scripts/explainer.py avatar-preview projects/my-film
-python scripts/explainer.py render projects/my-film --preview
-python scripts/explainer.py render projects/my-film
-python scripts/explainer.py check projects/my-film projects/my-film/renders/final.mp4
-python scripts/explainer.py contact-sheet projects/my-film projects/my-film/renders/final.mp4
-python scripts/explainer.py sync-check projects/my-film projects/my-film/renders/final.mp4
 ```
 
-`storyboard.json` is editable before approval. Each scene has start/end times, a headline, body, pose, optional `visual_label`, and optional project-relative `asset` image. `words.json` is a list of `{ "text": "word", "start": 1.2, "end": 1.5 }`. The storyboard records hashes of the script and voice; changing either requires planning again. Render output is never overwritten.
+Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. Setup asks for your brand and language, voice route, and avatar. Provider keys stay in environment variables and are not saved to the profile.
 
-Use `render --portrait` for a separate vertical layout. Use `retime <old-project> <new-project> --voice <new-take>` to keep the previous project and carry scene choices into a new timing plan. These routes still require a preview and review before delivery.
+For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`. Codex supports local marketplace installation from this repository.
 
-## Current limits
+## 🎙️ Voice and avatars
 
-This first version provides a deterministic template renderer and basic checks. Automatic transcription and ElevenLabs synthesis require the optional provider/runtime and have not been verified with live accounts. There is no native microphone capture or image generation inside the plugin; the user can attach media in chat, and an agent may use an available image generation tool to create original scene/pose assets. The full 1080p60 render is slower than preview and depends on local CPU/GPU/FFmpeg performance.
+Choose a recording you attach to chat or an ElevenLabs voice. For generated narration, set `ELEVENLABS_API_KEY` in the environment and provide a voice ID. No voice clone is required.
+
+Use the built in presenter or a sprite pack you own. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
+
+## 🧭 Workflow
+
+1. Choose a topic, audience, length, and language; review the script in chat.
+2. Attach or generate narration, then transcribe it or import reviewed word timings.
+3. Review the storyboard and approve it in chat.
+4. Render a preview, request revisions, then render and inspect the final video.
+5. Share the MP4 and editable project folder.
+
+Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs.
+
+## 🛠️ Development
+
+```bash
+python -m pip install -e ".[transcribe]"
+python -m unittest discover -s tests -v
+```
+
+Releases follow Clean Flow: merge feature work into `dev`, then promote stable `dev` to `main`. A push to `main` runs the [Release Build Flow Action](https://github.com/wgtechlabs/release-build-flow-action) to update the changelog, sync `pyproject.toml`, and publish a GitHub Release when the commit history calls for a version bump.
+
+## 📋 Limitations
+
+The first version provides a deterministic template renderer and basic media checks. It does not capture microphone audio or generate images inside the plugin. Automatic transcription downloads a model on first use. Full resolution renders depend on local CPU, memory, and FFmpeg performance.
+
+## 📄 License
+
+No license is declared yet. The repository is private while the project is being developed.
