@@ -1,0 +1,21 @@
+{
+  "name": "Waren",
+  "poses": {
+    "idle": "idle.png",
+    "present": "present.png",
+    "point": "point.png",
+    "celebrate": "celebrate.png"
+  },
+  "mouth_anchor": [
+    0.5,
+    0.34
+  ],
+  "mouth_width": 0.13,
+  "mouths": {
+    "rest": "mouth-rest.png",
+    "closed": "mouth-closed.png",
+    "small": "mouth-small.png",
+    "open": "mouth-open.png",
+    "wide": "mouth-wide.png"
+  }
+}

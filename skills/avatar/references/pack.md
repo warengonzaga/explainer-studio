@@ -2,6 +2,8 @@
 
 Place transparent PNG pose files and `manifest.json` in one directory. The head, feet, and mouth location should remain consistent between poses. Each image is fitted inside the presenter's scene box, anchored at the bottom.
 
+Optional `name` metadata identifies a pack in the creator profile. The bundled Waren example uses this field.
+
 ```json
 {
   "poses": {
