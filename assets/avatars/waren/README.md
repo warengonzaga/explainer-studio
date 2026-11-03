@@ -4,6 +4,6 @@ An original sample presenter based on Waren Gonzaga's supplied avatar images. Th
 
 Use this pack with `avatar-preview-pack` or choose **Waren (sample)** during setup. The transparent source sheets are kept in `source/`. The character uses neutral, even lighting and audio-reactive mouth states.
 
-The `point`, `present`, and `celebrate` poses use per-pose mouth fitting: their mouth patches are scaled to 85%; `point` is placed at `[0.48, 0.31]`, and the others at `[0.5, 0.31]`. The contact sheet is rendered through the same avatar compositor used in explainer videos. Custom packs can also provide closed-eye pose frames to enable automatic blinks.
+The `point`, `present`, and `celebrate` poses use per-pose mouth fitting: their mouth patches are scaled to 85% and centered at `[0.5, 0.31]`. The contact sheet is rendered through the same avatar compositor used in explainer videos. Custom packs can also provide closed-eye pose frames to enable automatic blinks.
 
 This avatar is licensed under the repository MIT License.
