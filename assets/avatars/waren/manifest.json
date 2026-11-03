@@ -18,6 +18,12 @@
   ],
   "mouth_width": 0.13,
   "mouth_fit": {
+    "idle": {
+      "anchor": [
+        0.5,
+        0.28
+      ]
+    },
     "point": {
       "anchor": [
         0.42,
