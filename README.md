@@ -59,4 +59,4 @@ The first version provides a deterministic template renderer and basic media che
 
 ## 📄 License
 
-No license is declared yet. The repository is private while the project is being developed.
+Explainer Studio is licensed under the [MIT License](LICENSE).
