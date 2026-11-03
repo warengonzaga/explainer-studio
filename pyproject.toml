@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "explainer-studio"
+version = "0.1.0"
+description = "Local-first, voice-timed explainer video toolkit"
+requires-python = ">=3.11"
+dependencies = ["Pillow>=10,<13"]
+
+[project.optional-dependencies]
+transcribe = ["faster-whisper>=1,<2"]
+
+[project.scripts]
+explainer = "explainer_studio.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

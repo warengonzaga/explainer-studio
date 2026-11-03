@@ -1,0 +1,24 @@
+# Avatar pack
+
+Place transparent PNG pose files and `manifest.json` in one directory. The head, feet, and mouth location should remain consistent between poses. Each image is fitted inside the presenter's scene box, anchored at the bottom.
+
+```json
+{
+  "poses": {
+    "idle": "idle.png",
+    "present": "present.png",
+    "point": "point.png",
+    "celebrate": "celebrate.png"
+  },
+  "mouth_anchor": [0.5, 0.34],
+  "mouth_width": 0.13,
+  "mouths": {
+    "closed": "mouth-closed.png",
+    "small": "mouth-small.png",
+    "open": "mouth-open.png",
+    "wide": "mouth-wide.png"
+  }
+}
+```
+
+`mouth_anchor` is `[x, y]` measured from the top-left of the visible fitted sprite, each value from 0 to 1. `mouth_width` is the fraction of sprite width used for a patch. Mouth images are optional; if absent, the engine draws simple mouth shapes on the avatar. For clean results, supply pose artwork with a neutral face and transparent mouth patches. The rendered lips follow the voice's loudness, not phonemes.

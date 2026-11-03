@@ -1,0 +1,180 @@
+"""Original geometric presenter and optional user-owned sprite packs."""
+
+from __future__ import annotations
+
+import math
+import shutil
+from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+from .common import ProjectError, project_file, read_json
+
+
+POSES = {"idle", "present", "point", "celebrate"}
+MOUTHS = {"rest", "closed", "small", "open", "wide"}
+
+
+def _hex(value: str, fallback: str) -> str:
+    return value if isinstance(value, str) and len(value) == 7 and value.startswith("#") else fallback
+
+
+def _mouth(draw: ImageDraw.ImageDraw, x: float, y: float, size: float, state: str, ink: str) -> None:
+    w = size
+    if state in {"rest", "closed"}:
+        draw.arc((x - w / 2, y - w / 5, x + w / 2, y + w / 4), 5, 175, fill=ink, width=max(2, round(w * 0.08)))
+    elif state == "small":
+        draw.ellipse((x - w * .25, y - w * .2, x + w * .25, y + w * .2), fill=ink)
+    elif state == "open":
+        draw.ellipse((x - w * .32, y - w * .3, x + w * .32, y + w * .45), fill=ink)
+    else:
+        draw.rounded_rectangle((x - w * .48, y - w * .22, x + w * .48, y + w * .3), radius=w * .15, fill=ink)
+
+
+def _default_avatar(canvas: Image.Image, box: tuple[int, int, int, int], pose: str, mouth: str, t: float, colors: dict) -> None:
+    x, y, w, h = box
+    draw = ImageDraw.Draw(canvas)
+    ink = _hex(colors.get("ink"), "#12223B")
+    accent = _hex(colors.get("accent"), "#377DFF")
+    skin = _hex(colors.get("skin"), "#E8B98F")
+    cx = x + w * .5
+    bob = math.sin(t * 4.4) * h * .006 if mouth not in {"rest", "closed"} else 0
+    head_y = y + h * .30 + bob
+    torso_top = y + h * .48 + bob
+    draw.rounded_rectangle((x + w * .23, torso_top, x + w * .77, y + h * .98), radius=w * .13, fill=accent)
+    stroke = max(4, round(w * .09))
+    if pose == "point":
+        left = [(x + w * .26, y + h * .59), (x + w * .11, y + h * .78)]
+        right = [(x + w * .75, y + h * .58), (x + w * .95, y + h * .35)]
+    elif pose == "present":
+        left = [(x + w * .25, y + h * .59), (x + w * .08, y + h * .49)]
+        right = [(x + w * .75, y + h * .59), (x + w * .93, y + h * .47)]
+    elif pose == "celebrate":
+        left = [(x + w * .26, y + h * .59), (x + w * .13, y + h * .27)]
+        right = [(x + w * .74, y + h * .59), (x + w * .87, y + h * .27)]
+    else:
+        left = [(x + w * .25, y + h * .6), (x + w * .13, y + h * .82)]
+        right = [(x + w * .75, y + h * .6), (x + w * .87, y + h * .82)]
+    for arm in (left, right):
+        draw.line(arm, fill=accent, width=stroke, joint="curve")
+        ex, ey = arm[-1]
+        r = stroke * .55
+        draw.ellipse((ex - r, ey - r, ex + r, ey + r), fill=skin)
+    hr = w * .215
+    draw.ellipse((cx - hr, head_y - hr, cx + hr, head_y + hr), fill=skin)
+    eye_y = head_y - hr * .17
+    if (t % 4.7) < .11:
+        for ex in (cx - hr * .38, cx + hr * .38):
+            draw.line((ex - hr * .12, eye_y, ex + hr * .12, eye_y), fill=ink, width=max(2, round(w * .015)))
+    else:
+        er = max(2, round(w * .017))
+        for ex in (cx - hr * .38, cx + hr * .38):
+            draw.ellipse((ex - er, eye_y - er, ex + er, eye_y + er), fill=ink)
+    _mouth(draw, cx, head_y + hr * .42, w * .13, mouth, ink)
+
+
+def validate_pack(root: Path, pack_relative: str) -> dict:
+    pack = project_file(root, pack_relative)
+    if not pack.is_dir():
+        raise ProjectError(f"avatar pack not found: {pack}")
+    manifest = read_json(pack / "manifest.json")
+    poses = manifest.get("poses")
+    if not isinstance(poses, dict) or "idle" not in poses:
+        raise ProjectError("avatar manifest needs poses.idle")
+    for name, relative in poses.items():
+        if not isinstance(relative, str) or name not in POSES or not (pack / relative).resolve().is_relative_to(pack.resolve()) or not (pack / relative).is_file() or (pack / relative).is_symlink() or Path(relative).suffix.lower() != ".png":
+            raise ProjectError(f"invalid avatar pose: {name}")
+    anchor = manifest.get("mouth_anchor")
+    if not isinstance(anchor, list) or len(anchor) != 2 or not all(isinstance(n, (int, float)) and 0 <= n <= 1 for n in anchor):
+        raise ProjectError("avatar manifest needs mouth_anchor [x, y] in 0..1")
+    mouths = manifest.get("mouths", {})
+    if not isinstance(mouths, dict):
+        raise ProjectError("avatar mouths must be a map")
+    for name, relative in mouths.items():
+        if not isinstance(relative, str) or name not in MOUTHS or not (pack / relative).resolve().is_relative_to(pack.resolve()) or not (pack / relative).is_file() or (pack / relative).is_symlink() or Path(relative).suffix.lower() != ".png":
+            raise ProjectError(f"invalid avatar mouth: {name}")
+    width = manifest.get("mouth_width", .13)
+    if not isinstance(width, (int, float)) or not .02 <= width <= .5:
+        raise ProjectError("avatar mouth_width must be between 0.02 and 0.5")
+    for relative in set(poses.values()) | set(mouths.values()):
+        try:
+            with Image.open(pack / relative) as image:
+                image.verify()
+        except OSError as exc:
+            raise ProjectError(f"invalid avatar PNG: {relative}") from exc
+    return manifest
+
+
+def copy_pack(source: Path, target: Path) -> None:
+    source = source.resolve()
+    manifest = validate_pack(source.parent, source.name)
+    if target.exists():
+        raise ProjectError(f"avatar pack already exists: {target}")
+    target.mkdir(parents=True)
+    shutil.copy2(source / "manifest.json", target / "manifest.json")
+    for relative in set(manifest["poses"].values()) | set(manifest.get("mouths", {}).values()):
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / relative, destination)
+
+
+def draw_avatar(canvas: Image.Image, root: Path, project: dict, pose: str, mouth: str, t: float, box: tuple[int, int, int, int]) -> None:
+    if pose not in POSES:
+        raise ProjectError(f"unsupported pose: {pose}")
+    if mouth not in MOUTHS:
+        mouth = "rest"
+    pack_relative = project.get("avatar_pack")
+    if not pack_relative:
+        _default_avatar(canvas, box, pose, mouth, t, project.get("colors", {}))
+        return
+    manifest = validate_pack(root, pack_relative)
+    pack = project_file(root, pack_relative)
+    pose_path = pack / manifest["poses"].get(pose, manifest["poses"]["idle"])
+    x, y, w, h = box
+    with Image.open(pose_path) as source:
+        sprite = source.convert("RGBA")
+        sprite.thumbnail((w, h), Image.Resampling.LANCZOS)
+    sx = x + (w - sprite.width) // 2
+    sy = y + h - sprite.height
+    canvas.paste(sprite, (sx, sy), sprite)
+    ax, ay = manifest["mouth_anchor"]
+    mx, my = sx + sprite.width * ax, sy + sprite.height * ay
+    mouth_file = manifest.get("mouths", {}).get(mouth)
+    if mouth_file:
+        with Image.open(pack / mouth_file) as source:
+            patch = source.convert("RGBA")
+            target_w = max(2, round(sprite.width * float(manifest.get("mouth_width", .13))))
+            patch.thumbnail((target_w, target_w * 2), Image.Resampling.LANCZOS)
+        canvas.paste(patch, (round(mx - patch.width / 2), round(my - patch.height / 2)), patch)
+    else:
+        _mouth(ImageDraw.Draw(canvas), mx, my, sprite.width * float(manifest.get("mouth_width", .13)), mouth, _hex(project.get("colors", {}).get("ink"), "#12223B"))
+
+
+def preview_avatar(root: Path, output: Path) -> Path:
+    project = read_json(root / "project.json")
+    return _preview_sheet(root, project, output)
+
+
+def preview_pack(pack: Path, output: Path) -> Path:
+    pack = pack.resolve()
+    validate_pack(pack.parent, pack.name)
+    return _preview_sheet(pack.parent, {"avatar_pack": pack.name, "colors": {}}, output)
+
+
+def _preview_sheet(root: Path, project: dict, output: Path) -> Path:
+    if output.exists():
+        raise ProjectError(f"preview already exists: {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    poses = ["idle", "present", "point", "celebrate"]
+    mouths = ["rest", "closed", "small", "open", "wide"]
+    cell_w, cell_h = 260, 340
+    sheet = Image.new("RGB", (cell_w * len(mouths), cell_h * len(poses)), "#F6F8FC")
+    draw = ImageDraw.Draw(sheet)
+    for row, pose in enumerate(poses):
+        for col, mouth in enumerate(mouths):
+            x, y = col * cell_w, row * cell_h
+            draw.rounded_rectangle((x + 8, y + 8, x + cell_w - 8, y + cell_h - 8), radius=16, fill="white")
+            draw_avatar(sheet, root, project, pose, mouth, 1.0, (x + 32, y + 18, cell_w - 64, cell_h - 68))
+            draw.text((x + 18, y + cell_h - 36), f"{pose} / {mouth}", fill="#172236")
+    sheet.save(output)
+    return output
