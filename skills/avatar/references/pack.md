@@ -18,6 +18,7 @@ Optional `name` metadata identifies a pack in the creator profile. The bundled W
   "mouth_anchor": [0.5, 0.34],
   "mouth_width": 0.13,
   "mouth_fit": {
+    "point": {"anchor": [0.48, 0.31], "width": 0.13, "scale": 0.85},
     "present": {"anchor": [0.5, 0.31], "width": 0.13, "scale": 0.85}
   },
   "mouths": {

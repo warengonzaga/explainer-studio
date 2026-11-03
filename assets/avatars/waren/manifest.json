@@ -12,6 +12,13 @@
   ],
   "mouth_width": 0.13,
   "mouth_fit": {
+    "point": {
+      "anchor": [
+        0.48,
+        0.31
+      ],
+      "scale": 0.85
+    },
     "present": {
       "anchor": [
         0.5,
