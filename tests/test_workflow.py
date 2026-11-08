@@ -52,10 +52,10 @@ class WorkflowTest(unittest.TestCase):
             board = json.loads(board_path.read_text(encoding="utf-8"))
             board["scenes"][0]["headline"] = "Revised headline"
             board_path.write_text(json.dumps(board), encoding="utf-8")
-            cli("render", project, "--preview", success=False)
+            cli("render-legacy", project, "--preview", success=False)
             cli("approve", project)
-            cli("render", project, "--preview")
-            video = project / "renders" / "preview.mp4"
+            cli("render-legacy", project, "--preview")
+            video = project / "renders" / "preview-legacy.mp4"
             self.assertTrue(video.is_file())
             cli("check", project, video)
             cli("contact-sheet", project, video)
