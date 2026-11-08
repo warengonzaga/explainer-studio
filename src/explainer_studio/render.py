@@ -73,7 +73,7 @@ def _brand_mark(image: Image.Image, project: dict, x: int, y: int, max_w: int, m
         ImageDraw.Draw(image).text((x, y), project.get("brand", "Explainer Studio"), font=_font(font_size, True), fill=ink)
 
 
-def _portrait_frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None) -> Image.Image:
+def _portrait_frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None, include_avatar: bool = True) -> Image.Image:
     w, h = size
     s = min(w / 1080, h / 1920)
     colors = project.get("colors", {})
@@ -99,7 +99,8 @@ def _portrait_frame(root: Path, project: dict, scene: dict, index: int, t: float
         body_font = _font(round(39 * s))
         for k, line in enumerate(_lines(d, scene.get("body", ""), body_font, w - pad * 3, 6)):
             d.text((pad + round(42 * s), round(700 * s) + k * round(55 * s)), line, font=body_font, fill=ink)
-    draw_avatar(image, root, project, scene.get("pose", "idle"), mouth_at(states, t), t, (round(32 * s), round(1120 * s), round(475 * s), round(500 * s)))
+    if include_avatar:
+        draw_avatar(image, root, project, scene.get("pose", "idle"), mouth_at(states, t), t, avatar_box(size))
     if scene.get("emphasis") and t >= float(scene.get("emphasis_at", 1e12)):
         d.text((round(560 * s), round(1180 * s)), str(scene["emphasis"])[:20].upper(), font=_font(round(30 * s), True), fill=accent)
     if index == len(project["_scenes"]) - 1 and project.get("cta"):
@@ -113,10 +114,10 @@ def _portrait_frame(root: Path, project: dict, scene: dict, index: int, t: float
     return image
 
 
-def _frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None) -> Image.Image:
+def _frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None, include_avatar: bool = True) -> Image.Image:
     w, h = size
     if h > w:
-        return _portrait_frame(root, project, scene, index, t, size, words, starts, states, asset)
+        return _portrait_frame(root, project, scene, index, t, size, words, starts, states, asset, include_avatar)
     s = min(w / 1280, h / 720)
     colors = project.get("colors", {})
     bg, ink, accent = colors.get("background", "#F6F8FC"), colors.get("ink", "#172236"), colors.get("accent", "#426BEB")
@@ -160,8 +161,8 @@ def _frame(root: Path, project: dict, scene: dict, index: int, t: float, size: t
         pulse = 1 + .12 * max(0, 1 - elapsed / .4)
         d.text((hx, round(h * .46)), str(scene["emphasis"])[:24].upper(), font=_font(round(29 * s * pulse), True), fill=accent)
 
-    avatar_box = (round(w * .025), round(h * .29), round(w * .31), round(h * .58))
-    draw_avatar(image, root, project, scene.get("pose", "idle"), mouth_at(states, t), t, avatar_box)
+    if include_avatar:
+        draw_avatar(image, root, project, scene.get("pose", "idle"), mouth_at(states, t), t, avatar_box(size))
 
     # Word-aligned caption: the current spoken word receives a colored backing.
     wi = bisect_right(starts, t) - 1
@@ -180,7 +181,24 @@ def _frame(root: Path, project: dict, scene: dict, index: int, t: float, size: t
     return image
 
 
+def avatar_box(size: tuple[int, int]) -> tuple[int, int, int, int]:
+    w, h = size
+    if h > w:
+        scale = min(w / 1080, h / 1920)
+        return round(32 * scale), round(1120 * scale), round(475 * scale), round(500 * scale)
+    return round(w * .025), round(h * .29), round(w * .31), round(h * .58)
+
+
 def render(root: Path, output: Path, preview: bool = False, portrait: bool = False) -> Path:
+    return _render(root, output, preview, portrait, include_avatar=True, include_audio=True)
+
+
+def render_background(root: Path, output: Path, preview: bool = False, portrait: bool = False) -> Path:
+    """Render the explainer visuals without narration or presenter for Engine composition."""
+    return _render(root, output, preview, portrait, include_avatar=False, include_audio=False)
+
+
+def _render(root: Path, output: Path, preview: bool, portrait: bool, include_avatar: bool, include_audio: bool) -> Path:
     project = read_json(root / "project.json")
     board = read_json(root / "storyboard.json")
     if not board.get("approved") or board.get("approval_hash") != storyboard_hash(board):
@@ -201,7 +219,7 @@ def render(root: Path, output: Path, preview: bool = False, portrait: bool = Fal
     if width < 320 or height < 240 or fps < 1 or fps > 60:
         raise ProjectError("invalid project resolution or frame rate")
     starts = [float(x["start"]) for x in words]
-    states = mouth_track(voice)
+    states = mouth_track(voice) if include_avatar else ["rest"]
     scenes = board["scenes"]
     project["_scenes"] = scenes
     if project.get("logo"):
@@ -212,16 +230,23 @@ def render(root: Path, output: Path, preview: bool = False, portrait: bool = Fal
             project["_logo_image"] = mark.convert("RGBA")
     ends = [float(x["end"]) for x in scenes]
     assets = [_scene_image(root, scene, (width, height)) for scene in scenes]
-    cmd = [command("ffmpeg"), "-v", "error", "-n", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", "-i", str(voice)]
+    cmd = [command("ffmpeg"), "-v", "error", "-n", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", str(fps), "-i", "-"]
+    if include_audio:
+        cmd += ["-i", str(voice)]
     music = project.get("music")
-    if music:
+    if music and include_audio:
         bed = project_file(root, music)
         if not bed.is_file():
             raise ProjectError(f"music not found: {bed}")
         cmd += ["-i", str(bed), "-filter_complex", "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[vo];[2:a]volume=0.10[bed];[bed][vo]sidechaincompress=threshold=0.02:ratio=5:attack=20:release=400[duck];[vo][duck]amix=inputs=2:normalize=0[a]", "-map", "0:v", "-map", "[a]"]
-    else:
+    elif include_audio:
         cmd += ["-map", "0:v", "-map", "1:a", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
-    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast" if preview else "medium", "-crf", "23" if preview else "18", "-c:a", "aac", "-b:a", "192k", "-t", str(duration), "-movflags", "+faststart", str(output)]
+    else:
+        cmd += ["-map", "0:v", "-an"]
+    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast" if preview else "medium", "-crf", "23" if preview else "18"]
+    if include_audio:
+        cmd += ["-c:a", "aac", "-b:a", "192k", "-t", str(duration)]
+    cmd += ["-movflags", "+faststart", str(output)]
     log = output.with_suffix(".render.log")
     try:
         with log.open("wb") as error_log:
@@ -232,7 +257,7 @@ def render(root: Path, output: Path, preview: bool = False, portrait: bool = Fal
                 for frame_number in range(count):
                     t = min(duration - 1e-6, frame_number / fps)
                     scene_index = min(len(scenes) - 1, bisect_right(ends, t))
-                    frame = _frame(root, project, scenes[scene_index], scene_index, t, (width, height), words, starts, states, assets[scene_index])
+                    frame = _frame(root, project, scenes[scene_index], scene_index, t, (width, height), words, starts, states, assets[scene_index], include_avatar)
                     proc.stdin.write(frame.tobytes())
             except BrokenPipeError:
                 pass

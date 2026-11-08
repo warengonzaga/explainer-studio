@@ -2,7 +2,7 @@
 
 ## 🎬 Overview
 
-Explainer Studio is a local plugin for making narrated explainer videos from Codex or Claude Code chat. It guides you from topic and script through voice timing, storyboard review, preview, and MP4 delivery. The implementation and bundled presenter are original; [Talking Explainer](https://github.com/brewed-ops/talking-explainer) informed the workflow.
+Explainer Studio is a local plugin for making narrated explainer videos from Codex or Claude Code chat. It guides you from topic and script through voice timing, storyboard review, preview, and MP4 delivery. Studio owns the explainer workflow and avatar assets; the generic [AI Video Editing Engine](https://github.com/warengonzaga/ai-video-editing-engine) owns final timeline composition and rendering. The implementation and bundled presenter are original; [Talking Explainer](https://github.com/brewed-ops/talking-explainer) informed the workflow.
 
 ## ✨ Features
 
@@ -10,21 +10,22 @@ Explainer Studio is a local plugin for making narrated explainer videos from Cod
 - Use your own narration or generate speech with ElevenLabs.
 - Create and review word timed storyboards before rendering.
 - Use an original geometric presenter or prepare a custom sprite pack.
-- Render landscape or portrait video locally and run basic media checks.
+- Compose scenes, avatar states, and narration in an editable Engine timeline.
+- Render landscape or portrait video through the Engine and run basic media checks.
 - Keep prior narration and renders intact when creating a new take.
 
-Lip movement follows voice loudness; it is not phoneme accurate. Automatic transcription and ElevenLabs require their optional runtime and account credentials.
+Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription and ElevenLabs require their optional runtime and account credentials.
 
 ## 🚀 Quick start
 
-Requirements: Python 3.11+, FFmpeg, and ffprobe. Install Pillow and the CLI:
+Requirements: Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js 22+, and a local AI Video Editing Engine checkout. Run `npm install` once in the Engine checkout, then add it to setup with `--engine-path`; `AI_VIDEO_ENGINE_PATH` can override the saved path for a single session. Install Pillow and the Studio CLI:
 
 ```bash
 python -m pip install -e .
 python scripts/explainer.py doctor
 ```
 
-Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. Setup asks for your brand and language, voice route, and avatar. Provider keys stay in environment variables and are not saved to the profile.
+Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. Setup asks for your brand and language, voice route, avatar, and Engine path. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
 For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`. Codex supports local marketplace installation from this repository.
 
@@ -39,7 +40,7 @@ Choose the built-in presenter, the bundled **Waren** sample avatar, or a sprite 
 1. Choose a topic, audience, length, and language; review the script in chat.
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
 3. Review the storyboard and approve it in chat.
-4. Render a preview, request revisions, then render and inspect the final video.
+4. Render a preview through the Engine, request revisions, then render and inspect the final video. Use `render-legacy` only to compare against the old Studio compositor.
 5. Share the MP4 and editable project folder.
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs.
@@ -55,7 +56,7 @@ Releases follow Clean Flow: merge feature work into `dev`, then promote stable `
 
 ## 📋 Limitations
 
-The first version provides a deterministic template renderer and basic media checks. It does not capture microphone audio or generate images inside the plugin. Automatic transcription downloads a model on first use. Full resolution renders depend on local CPU, memory, and FFmpeg performance.
+The first version provides a deterministic template renderer and basic media checks. It does not capture microphone audio or generate images inside the plugin. Automatic transcription downloads a model on first use. The five-state sample avatar groups related phonetic cues; a pack with dedicated Rhubarb A-H artwork can improve articulation detail. Full resolution renders depend on local CPU, memory, and FFmpeg performance.
 
 ## 📄 License
 

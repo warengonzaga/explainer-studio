@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "explainer-studio",
   "version": "0.1.0",
-  "description": "Create narrated explainer videos with a chat-guided setup, storyboarding, original avatars, and local rendering.",
+  "description": "Create narrated explainer videos with a chat-guided workflow, original avatars, and the AI Video Editing Engine.",
   "extensions": {
     "com.openai": {
       "onboardingSkill": "./skills/setup/SKILL.md",
