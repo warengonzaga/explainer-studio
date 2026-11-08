@@ -5,7 +5,7 @@ description: Set up Explainer Studio for the first time, repair missing local to
 
 # Set up Explainer Studio
 
-Resolve the plugin root from this file (`../..`). Run `python <plugin-root>/scripts/explainer.py doctor` first. Explain missing tools in plain language. Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js, and a local AI Video Editing Engine checkout are required for Engine-backed rendering; `faster-whisper` is optional until automatic transcription is needed. Use a project-local virtual environment for Python packages when possible. Do not put an API key in command arguments, chat output, or `profile.json`.
+Resolve the plugin root from this file (`../..`). Run `python <plugin-root>/scripts/explainer.py doctor` first. Explain missing tools in plain language. Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js, and a local AI Video Editing Engine checkout are required for Engine-backed rendering; `faster-whisper` is optional until automatic transcription is needed. No published AIVEE package is required: Studio invokes the local checkout's CLI and does not import its JavaScript API. If its dependencies are missing, run `npm install` inside the Engine checkout. Use a project-local virtual environment for Python packages when possible. Do not put an API key in command arguments, chat output, or `profile.json`.
 
 Ask the user one short grouped set of questions:
 

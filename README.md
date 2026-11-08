@@ -18,7 +18,7 @@ Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mout
 
 ## 🚀 Quick start
 
-Requirements: Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js 22+, and a local AI Video Editing Engine checkout. Run `npm install` once in the Engine checkout, then add it to setup with `--engine-path`; `AI_VIDEO_ENGINE_PATH` can override the saved path for a single session. Install Pillow and the Studio CLI:
+Requirements: Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js 22+, and a local AI Video Editing Engine checkout. A published AIVEE package is not required: Studio calls the checkout's CLI with `node <engine-path>/src/cli.mjs` and does not import its JavaScript API. Run `npm install` once inside that checkout to install its local dependencies, then add it to setup with `--engine-path`; `AI_VIDEO_ENGINE_PATH` can override the saved path for a single session. Install Pillow and the Studio CLI:
 
 ```bash
 python -m pip install -e .
