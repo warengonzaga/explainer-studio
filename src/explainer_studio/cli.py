@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .avatar import copy_pack, preview_avatar, preview_pack, validate_pack
 from .common import ProjectError, command, probe_duration, project_file, read_json, write_json
+from .engine import render_with_engine, resolve_engine_root
 from .quality import contact_sheet, sync_check
 from .render import render, storyboard_hash
 from .timing import build_storyboard, import_words, transcribe, validate_storyboard
@@ -44,6 +45,15 @@ def setup(args) -> None:
         raise ProjectError("ElevenLabs requires --voice-id (API key stays in ELEVENLABS_API_KEY)")
     if voice_id and not re.fullmatch(r"[A-Za-z0-9_-]+", voice_id):
         raise ProjectError("voice ID contains unsupported characters")
+    engine_path = args.engine_path or old.get("engine_path")
+    if engine_path:
+        engine_path = str(resolve_engine_root({"engine_path": engine_path}))
+    rhubarb_path = args.rhubarb_path or old.get("rhubarb_path")
+    if rhubarb_path:
+        rhubarb_file = Path(rhubarb_path).expanduser()
+        rhubarb_path = str(rhubarb_file.resolve()) if rhubarb_file.is_file() else shutil.which(str(rhubarb_path))
+        if not rhubarb_path:
+            raise ProjectError("Rhubarb executable not found")
     colors = old.get("colors", {}).copy()
     for key, value, default in (("background", args.background, "#F6F8FC"), ("ink", args.ink, "#172236"), ("accent", args.accent, "#426BEB")):
         colors[key] = value or colors.get(key) or default
@@ -87,6 +97,8 @@ def setup(args) -> None:
         "version": 1, "brand": brand, "language": args.language or old.get("language") or "en",
         "voice_route": voice_route, "voice_id": voice_id,
         "avatar": avatar, "avatar_name": avatar_name, "avatar_pack": avatar_pack,
+        "engine_path": engine_path,
+        "rhubarb_path": str(Path(rhubarb_path).expanduser().resolve()) if rhubarb_path else None,
         "output_dir": str(Path(args.output_dir or old.get("output_dir") or "~/Explainer Studio").expanduser().resolve()),
         "colors": colors, "logo": logo, "cta": args.cta or old.get("cta") or "",
     }
@@ -110,6 +122,16 @@ def doctor(_) -> None:
         print("faster-whisper: optional, needed for automatic word timing")
     path = home() / "profile.json"
     print(f"profile: {path if path.is_file() else 'not set up'}")
+    try:
+        engine_root = resolve_engine_root(read_json(path) if path.is_file() else {})
+        print(f"engine: {engine_root}")
+    except ProjectError as exc:
+        print(f"engine: MISSING ({exc})")
+    profile = read_json(path) if path.is_file() else {}
+    rhubarb = os.environ.get("RHUBARB_PATH") or profile.get("rhubarb_path") or shutil.which("rhubarb")
+    if rhubarb and not Path(rhubarb).expanduser().is_file():
+        rhubarb = shutil.which(rhubarb)
+    print(f"rhubarb: {Path(rhubarb).expanduser().resolve() if rhubarb else 'optional; amplitude lip sync will be used'}")
 
 
 def init(args) -> None:
@@ -316,9 +338,17 @@ def check(args) -> None:
 
 def render_command(args) -> None:
     root = Path(args.project).resolve()
-    name = ("preview" if args.preview else "final") + ("-portrait" if args.portrait else "") + ".mp4"
+    name = ("preview" if args.preview else "final") + ("-portrait" if args.portrait else "") + "-legacy.mp4"
     target = Path(args.output).resolve() if args.output else root / "renders" / name
     print(render(root, target, preview=args.preview, portrait=args.portrait))
+
+
+def render_engine_command(args) -> None:
+    root = Path(args.project).resolve()
+    profile = load_profile()
+    suffix = "-portrait" if args.portrait else ""
+    target = Path(args.output).resolve() if args.output else root / "renders" / f"{'preview' if args.preview else 'final'}{suffix}-engine.mp4"
+    print(render_with_engine(root, target, profile, preview=args.preview, portrait=args.portrait))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -333,6 +363,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--voice-id")
     p.add_argument("--avatar", choices=["built-in", "custom"])
     p.add_argument("--avatar-pack")
+    p.add_argument("--engine-path")
+    p.add_argument("--rhubarb-path")
     p.add_argument("--output-dir")
     p.add_argument("--logo")
     p.add_argument("--cta")
@@ -391,7 +423,19 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("approve", help="mark a reviewed storyboard approved")
     p.add_argument("project")
     p.set_defaults(handler=approve)
-    p = sub.add_parser("render", help="render a preview or final MP4")
+    p = sub.add_parser("render", help="render a preview or final MP4 through the AI Video Editing Engine")
+    p.add_argument("project")
+    p.add_argument("--preview", action="store_true")
+    p.add_argument("--portrait", action="store_true")
+    p.add_argument("--output")
+    p.set_defaults(handler=render_engine_command)
+    p = sub.add_parser("render-engine", help="render through the AI Video Editing Engine")
+    p.add_argument("project")
+    p.add_argument("--preview", action="store_true")
+    p.add_argument("--portrait", action="store_true")
+    p.add_argument("--output")
+    p.set_defaults(handler=render_engine_command)
+    p = sub.add_parser("render-legacy", help="render with the comparison-only Studio compositor")
     p.add_argument("project")
     p.add_argument("--preview", action="store_true")
     p.add_argument("--portrait", action="store_true")
