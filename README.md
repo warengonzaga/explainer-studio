@@ -10,11 +10,23 @@ Explainer Studio is a local plugin for making narrated explainer videos from Cod
 - Use your own narration or generate speech with ElevenLabs.
 - Create and review word timed storyboards before rendering.
 - Use an original geometric presenter or prepare a custom sprite pack.
+- Start with the bundled presenter, a clean motion-graphics style, and phrase captions in a speech bubble beside the avatar.
 - Compose scenes, avatar states, and narration in an editable Engine timeline.
 - Render landscape or portrait video through the Engine and run basic media checks.
 - Keep prior narration and renders intact when creating a new take.
 
 Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription and ElevenLabs require their optional runtime and account credentials.
+
+For creative planning and animation authoring, our project recommendations are:
+
+| Chat environment | Recommended for best results | Minimum recommended |
+| --- | --- | --- |
+| Codex | Astra | Sol |
+| Claude Code | Opus | Sonnet |
+
+Select the model in your chat environment. These recommendations guide creative work; rendering uses the local Engine. Every video still needs visual review.
+
+The visual quality baseline is a deliberately composed scene with readable artwork, narration-timed object movement, and coherent visual progression. By default, show short narration-synced phrases in a speech bubble beside the presenter, with its tail pointing toward the avatar; keep it clear of the main visual and Reels controls. The Engine provides this as a configurable caption layout. See the [motion quality guide](skills/create-explainer/references/motion-quality.md) for authoring and review requirements.
 
 ## 🚀 Quick start
 
