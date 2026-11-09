@@ -44,7 +44,9 @@ def transcribe(root: Path, model_name: str = "small", language: str | None = Non
     for segment in segments:
         for word in segment.words or []:
             if tokens(word.word):
-                words.append({"text": word.word.strip(), "start": round(word.start, 3), "end": round(word.end, 3)})
+                start = round(word.start, 3)
+                end = max(round(word.end, 3), start + 0.02)
+                words.append({"text": word.word.strip(), "start": start, "end": end})
     validate_words(words, duration)
     write_json(root / "words.json", words)
     return len(words)
