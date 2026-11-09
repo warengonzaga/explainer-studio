@@ -34,9 +34,7 @@ def setup(args) -> None:
     old = read_json(target) if target.is_file() else {}
     if target.exists() and not args.force:
         raise ProjectError(f"profile already exists: {target}; use --force after confirming changes")
-    brand = args.brand or old.get("brand")
-    if not brand:
-        raise ProjectError("brand is required")
+    brand = args.brand or old.get("brand") or "Explainer Studio"
     voice_route = args.voice_route or old.get("voice_route") or "recording"
     if voice_route not in {"recording", "elevenlabs"}:
         raise ProjectError("voice route must be recording or elevenlabs")
@@ -45,7 +43,7 @@ def setup(args) -> None:
         raise ProjectError("ElevenLabs requires --voice-id (API key stays in ELEVENLABS_API_KEY)")
     if voice_id and not re.fullmatch(r"[A-Za-z0-9_-]+", voice_id):
         raise ProjectError("voice ID contains unsupported characters")
-    engine_path = args.engine_path or old.get("engine_path")
+    engine_path = args.engine_path or old.get("engine_path") or os.environ.get("AI_VIDEO_ENGINE_PATH")
     if engine_path:
         engine_path = str(resolve_engine_root({"engine_path": engine_path}))
     rhubarb_path = args.rhubarb_path or old.get("rhubarb_path")

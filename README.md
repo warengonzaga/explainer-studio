@@ -25,7 +25,7 @@ python -m pip install -e .
 python scripts/explainer.py doctor
 ```
 
-Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. Setup asks for your brand and language, voice route, avatar, and Engine path. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, built-in geometric avatar, default colors, and `~/Explainer Studio` output. Set `AI_VIDEO_ENGINE_PATH` or provide the local Engine checkout path during setup. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
 For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`. Codex supports local marketplace installation from this repository.
 
