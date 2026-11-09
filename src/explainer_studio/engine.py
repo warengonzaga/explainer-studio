@@ -231,12 +231,16 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             "words": [{"text": item["text"].strip(), "start": float(item["start"]), "end": min(duration, float(item["end"]))} for item in words],
         })
         type_scale = min(width / 1080, height / 1920)
+        is_portrait = height > width
         caption_options_path = temporary / "studio-caption-options.json"
         write_json(caption_options_path, {
-            "layoutPreset": "socialStack", "x": 0.08, "y": 0.42, "width": 0.82, "height": 0.14,
-            "fontSize": max(8, round(58 * type_scale)), "wordsPerCaption": 6, "wordsPerLine": 3,
+            "layoutPreset": "speechBubble",
+            "x": 0.36 if is_portrait else 0.31, "y": 0.63 if is_portrait else 0.46,
+            "width": 0.58 if is_portrait else 0.65, "height": 0.1 if is_portrait else 0.12,
+            "fontSize": max(8, round(48 * type_scale)), "wordsPerCaption": 6, "wordsPerLine": 3,
             "wordHighlight": True, "wordHighlightColor": "#426BEB", "wordHighlightAnimation": "pop",
-            "color": "#172236", "backgroundColor": "transparent",
+            "color": "#172236", "backgroundColor": "#FFFFFF",
+            "bubble": {"tailSide": "left", "tailPosition": 0.35, "tailSizePixels": max(8, round(26 * type_scale)), "cornerRadiusPixels": max(8, round(28 * type_scale))},
         })
         caption_track_path = temporary / "studio-captions.json"
         _engine_cli(engine_root, ["timeline", "captions", str(transcript_path), str(caption_track_path), str(caption_options_path)])
