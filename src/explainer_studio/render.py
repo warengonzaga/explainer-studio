@@ -73,7 +73,7 @@ def _brand_mark(image: Image.Image, project: dict, x: int, y: int, max_w: int, m
         ImageDraw.Draw(image).text((x, y), project.get("brand", "Explainer Studio"), font=_font(font_size, True), fill=ink)
 
 
-def _portrait_frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None, include_avatar: bool = True) -> Image.Image:
+def _portrait_frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None, include_avatar: bool = True, include_captions: bool = True) -> Image.Image:
     w, h = size
     s = min(w / 1080, h / 1920)
     colors = project.get("colors", {})
@@ -81,43 +81,45 @@ def _portrait_frame(root: Path, project: dict, scene: dict, index: int, t: float
     image = Image.new("RGB", size, bg)
     d = ImageDraw.Draw(image)
     pad = round(72 * s)
-    _brand_mark(image, project, pad, round(180 * s), round(400 * s), round(80 * s), round(35 * s), ink)
-    d.text((w - round(190 * s), round(185 * s)), f"{index + 1:02d} / {len(project['_scenes']):02d}", font=_font(round(26 * s)), fill=accent)
+    if not scene.get("visual_cues"):
+        _brand_mark(image, project, pad, round(180 * s), round(400 * s), round(80 * s), round(35 * s), ink)
+        d.text((w - round(190 * s), round(185 * s)), f"{index + 1:02d} / {len(project['_scenes']):02d}", font=_font(round(26 * s)), fill=accent)
     local = max(0, t - float(scene["start"]))
     rise = max(0, 1 - min(1, local / .45)) * round(28 * s)
-    title_font = _font(round(68 * s), True)
-    for k, line in enumerate(_lines(d, scene["headline"], title_font, w - pad * 2, 3)):
-        d.text((pad, round(300 * s) + k * round(84 * s) + rise), line, font=title_font, fill=ink)
-    d.rounded_rectangle((pad, round(565 * s), w - pad, round(1110 * s)), radius=round(35 * s), fill="white", outline="#DEE4EF", width=max(1, round(2 * s)))
+    if not scene.get("visual_cues"):
+        title_font = _font(round(68 * s), True)
+        for k, line in enumerate(_lines(d, scene["headline"], title_font, w - pad * 2, 3)):
+            d.text((pad, round(300 * s) + k * round(84 * s) + rise), line, font=title_font, fill=ink)
+        d.rounded_rectangle((pad, round(565 * s), w - pad, round(1110 * s)), radius=round(35 * s), fill="white", outline="#DEE4EF", width=max(1, round(2 * s)))
     if asset:
         progress = min(1, local / max(.1, float(scene["end"]) - float(scene["start"])))
         thumb = asset.copy()
         thumb.thumbnail((round((w - pad * 3) * (1 + .035 * progress)), round(465 * s * (1 + .035 * progress))), Image.Resampling.LANCZOS)
         image.paste(thumb, ((w - thumb.width) // 2, round(600 * s) + (round(465 * s) - thumb.height) // 2), thumb)
-    else:
+    elif not scene.get("visual_cues"):
         d.text((pad + round(42 * s), round(625 * s)), scene.get("visual_label") or "THE IDEA", font=_font(round(29 * s), True), fill=accent)
         body_font = _font(round(39 * s))
         for k, line in enumerate(_lines(d, scene.get("body", ""), body_font, w - pad * 3, 6)):
             d.text((pad + round(42 * s), round(700 * s) + k * round(55 * s)), line, font=body_font, fill=ink)
     if include_avatar:
         draw_avatar(image, root, project, scene.get("pose", "idle"), mouth_at(states, t), t, avatar_box(size))
-    if scene.get("emphasis") and t >= float(scene.get("emphasis_at", 1e12)):
+    if include_captions and scene.get("emphasis") and not scene.get("visual_cues") and t >= float(scene.get("emphasis_at", 1e12)):
         d.text((round(560 * s), round(1180 * s)), str(scene["emphasis"])[:20].upper(), font=_font(round(30 * s), True), fill=accent)
     if index == len(project["_scenes"]) - 1 and project.get("cta"):
         d.text((round(550 * s), round(1250 * s)), project["cta"][:32], font=_font(round(38 * s), True), fill=ink)
     wi = bisect_right(starts, t) - 1
-    if wi >= 0 and t < float(words[wi]["end"]) + .6:
+    if include_captions and wi >= 0 and t < float(words[wi]["end"]) + .6:
         active = words[wi]["text"].strip()
         word_font = _font(round(55 * s), True)
-        for k, line in enumerate(_lines(d, active, word_font, round(450 * s), 2)):
-            d.text((round(560 * s), round(1350 * s) + k * round(68 * s)), line, font=word_font, fill=accent)
+        for k, line in enumerate(_lines(d, active, word_font, round(360 * s), 2)):
+            d.text((round(540 * s), round(1350 * s) + k * round(68 * s)), line, font=word_font, fill=accent)
     return image
 
 
-def _frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None, include_avatar: bool = True) -> Image.Image:
+def _frame(root: Path, project: dict, scene: dict, index: int, t: float, size: tuple[int, int], words: list[dict], starts: list[float], states: list[str], asset: Image.Image | None, include_avatar: bool = True, include_captions: bool = True) -> Image.Image:
     w, h = size
     if h > w:
-        return _portrait_frame(root, project, scene, index, t, size, words, starts, states, asset, include_avatar)
+        return _portrait_frame(root, project, scene, index, t, size, words, starts, states, asset, include_avatar, include_captions)
     s = min(w / 1280, h / 720)
     colors = project.get("colors", {})
     bg, ink, accent = colors.get("background", "#F6F8FC"), colors.get("ink", "#172236"), colors.get("accent", "#426BEB")
@@ -147,26 +149,28 @@ def _frame(root: Path, project: dict, scene: dict, index: int, t: float, size: t
         ay = round(h * .57 - thumb.height / 2)
         image.paste(thumb, (ax, ay), thumb)
     else:
-        card = (hx, round(h * .55), round(w * .92), round(h * .77))
+        card = (round(w * .35), round(h * .46), round(w * .95), round(h * .85)) if scene.get("visual_cues") else (hx, round(h * .55), round(w * .92), round(h * .77))
         d.rounded_rectangle(card, radius=round(26 * s), fill="#FFFFFF", outline="#DEE4EF", width=max(1, round(2 * s)))
         d.text((hx + round(32 * s), card[1] + round(26 * s)), scene.get("visual_label") or "THE IDEA", font=_font(round(19 * s), True), fill=accent)
         body = scene.get("body", "")
-        for k, line in enumerate(_lines(d, body, _font(round(25 * s)), card[2] - card[0] - round(64 * s), 3)):
-            d.text((hx + round(32 * s), card[1] + round(68 * s) + k * round(34 * s)), line, font=_font(round(25 * s)), fill=ink)
+        if not scene.get("visual_cues"):
+            for k, line in enumerate(_lines(d, body, _font(round(25 * s)), card[2] - card[0] - round(64 * s), 3)):
+                d.text((hx + round(32 * s), card[1] + round(68 * s) + k * round(34 * s)), line, font=_font(round(25 * s)), fill=ink)
 
     if index == len(project["_scenes"]) - 1 and project.get("cta"):
         d.text((hx, round(h * .82)), project["cta"][:48], font=_font(round(28 * s), True), fill=accent)
-    if scene.get("emphasis") and t >= float(scene.get("emphasis_at", 1e12)):
+    if include_captions and scene.get("emphasis") and t >= float(scene.get("emphasis_at", 1e12)):
         elapsed = t - float(scene["emphasis_at"])
         pulse = 1 + .12 * max(0, 1 - elapsed / .4)
-        d.text((hx, round(h * .46)), str(scene["emphasis"])[:24].upper(), font=_font(round(29 * s * pulse), True), fill=accent)
+        emphasis_y = round(h * (.405 if scene.get("visual_cues") else .46))
+        d.text((hx, emphasis_y), str(scene["emphasis"])[:24].upper(), font=_font(round(29 * s * pulse), True), fill=accent)
 
     if include_avatar:
         draw_avatar(image, root, project, scene.get("pose", "idle"), mouth_at(states, t), t, avatar_box(size))
 
     # Word-aligned caption: the current spoken word receives a colored backing.
     wi = bisect_right(starts, t) - 1
-    if wi >= 0 and t < float(words[wi]["end"]) + .6:
+    if include_captions and wi >= 0 and t < float(words[wi]["end"]) + .6:
         lo, hi = max(0, wi - 3), min(len(words), wi + 4)
         caption = " ".join(x["text"].strip() for x in words[lo:hi])
         cap_font = _font(round(25 * s), True)
@@ -190,15 +194,15 @@ def avatar_box(size: tuple[int, int]) -> tuple[int, int, int, int]:
 
 
 def render(root: Path, output: Path, preview: bool = False, portrait: bool = False) -> Path:
-    return _render(root, output, preview, portrait, include_avatar=True, include_audio=True)
+    return _render(root, output, preview, portrait, include_avatar=True, include_audio=True, include_captions=True)
 
 
 def render_background(root: Path, output: Path, preview: bool = False, portrait: bool = False) -> Path:
     """Render the explainer visuals without narration or presenter for Engine composition."""
-    return _render(root, output, preview, portrait, include_avatar=False, include_audio=False)
+    return _render(root, output, preview, portrait, include_avatar=False, include_audio=False, include_captions=False)
 
 
-def _render(root: Path, output: Path, preview: bool, portrait: bool, include_avatar: bool, include_audio: bool) -> Path:
+def _render(root: Path, output: Path, preview: bool, portrait: bool, include_avatar: bool, include_audio: bool, include_captions: bool) -> Path:
     project = read_json(root / "project.json")
     board = read_json(root / "storyboard.json")
     if not board.get("approved") or board.get("approval_hash") != storyboard_hash(board):
@@ -257,7 +261,7 @@ def _render(root: Path, output: Path, preview: bool, portrait: bool, include_ava
                 for frame_number in range(count):
                     t = min(duration - 1e-6, frame_number / fps)
                     scene_index = min(len(scenes) - 1, bisect_right(ends, t))
-                    frame = _frame(root, project, scenes[scene_index], scene_index, t, (width, height), words, starts, states, assets[scene_index], include_avatar)
+                    frame = _frame(root, project, scenes[scene_index], scene_index, t, (width, height), words, starts, states, assets[scene_index], include_avatar, include_captions)
                     proc.stdin.write(frame.tobytes())
             except BrokenPipeError:
                 pass

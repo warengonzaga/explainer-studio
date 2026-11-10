@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -44,7 +45,9 @@ def transcribe(root: Path, model_name: str = "small", language: str | None = Non
     for segment in segments:
         for word in segment.words or []:
             if tokens(word.word):
-                words.append({"text": word.word.strip(), "start": round(word.start, 3), "end": round(word.end, 3)})
+                start = round(word.start, 3)
+                end = max(round(word.end, 3), start + 0.02)
+                words.append({"text": word.word.strip(), "start": start, "end": end})
     validate_words(words, duration)
     write_json(root / "words.json", words)
     return len(words)
@@ -137,6 +140,30 @@ def validate_storyboard(root: Path, board: dict, duration: float | None = None) 
             asset = project_file(root, scene["asset"])
             if not asset.is_file():
                 raise ProjectError(f"scene {index + 1} asset not found: {asset}")
+        cues = scene.get("visual_cues", [])
+        if not isinstance(cues, list):
+            raise ProjectError(f"scene {index + 1} visual_cues must be an array")
+        for cue_index, cue in enumerate(cues):
+            if not isinstance(cue, dict):
+                raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} must be an object")
+            asset_name = cue.get("asset")
+            if not isinstance(asset_name, str) or not project_file(root, asset_name).is_file():
+                raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} asset not found")
+            try:
+                cue_start, cue_duration = float(cue["start"]), float(cue["duration"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} needs start and duration") from exc
+            if (not math.isfinite(cue_start) or not math.isfinite(cue_duration)
+                    or cue_start < start or cue_duration < 0.8 or cue_start + cue_duration > end + 1e-6):
+                raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} is outside its scene or too short")
+            for field in ("x", "y", "width", "height"):
+                value = cue.get(field)
+                if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)):
+                    raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} {field} must be numeric")
+            x, y = float(cue.get("x", 0.5)), float(cue.get("y", 0.55))
+            width, height = float(cue.get("width", 0.38)), float(cue.get("height", 0.2))
+            if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > 1 or y + height > 1:
+                raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} must fit inside the frame")
         if scene.get("emphasis_at") is not None:
             cue = float(scene["emphasis_at"])
             if cue < start or cue >= end:

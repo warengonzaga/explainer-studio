@@ -41,6 +41,8 @@ class EngineTimelineTest(unittest.TestCase):
                 ]}), encoding="utf-8")
 
             with patch("explainer_studio.audio.TemporaryDirectory", return_value=nullcontext(str(work))), patch(
+                "explainer_studio.audio.command", return_value="ffmpeg",
+            ), patch(
                 "explainer_studio.audio.run",
             ) as convert_audio, patch(
                 "explainer_studio.audio.subprocess.run", side_effect=generate_cues,

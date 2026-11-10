@@ -11,32 +11,26 @@ import sys
 from pathlib import Path
 
 from .avatar import copy_pack, preview_avatar, preview_pack, validate_pack
-from .common import ProjectError, command, probe_duration, project_file, read_json, write_json
-from .engine import render_with_engine, resolve_engine_root
+from .common import ProjectError, command, probe_duration, project_file, read_json, studio_home, write_json
+from .engine import ensure_aivee, render_with_engine, resolve_aivee
 from .quality import contact_sheet, sync_check
 from .render import render, storyboard_hash
 from .timing import build_storyboard, import_words, transcribe, validate_storyboard
 
 
-def home() -> Path:
-    return Path(os.environ.get("EXPLAINER_STUDIO_HOME", Path.home() / ".explainer-studio")).expanduser()
-
-
 def load_profile() -> dict:
-    path = home() / "profile.json"
+    path = studio_home() / "profile.json"
     if not path.is_file():
         raise ProjectError("profile not set up; run `explainer setup` through the plugin")
     return read_json(path)
 
 
 def setup(args) -> None:
-    target = home() / "profile.json"
+    target = studio_home() / "profile.json"
     old = read_json(target) if target.is_file() else {}
     if target.exists() and not args.force:
         raise ProjectError(f"profile already exists: {target}; use --force after confirming changes")
-    brand = args.brand or old.get("brand")
-    if not brand:
-        raise ProjectError("brand is required")
+    brand = args.brand or old.get("brand") or "Explainer Studio"
     voice_route = args.voice_route or old.get("voice_route") or "recording"
     if voice_route not in {"recording", "elevenlabs"}:
         raise ProjectError("voice route must be recording or elevenlabs")
@@ -45,9 +39,6 @@ def setup(args) -> None:
         raise ProjectError("ElevenLabs requires --voice-id (API key stays in ELEVENLABS_API_KEY)")
     if voice_id and not re.fullmatch(r"[A-Za-z0-9_-]+", voice_id):
         raise ProjectError("voice ID contains unsupported characters")
-    engine_path = args.engine_path or old.get("engine_path")
-    if engine_path:
-        engine_path = str(resolve_engine_root({"engine_path": engine_path}))
     rhubarb_path = args.rhubarb_path or old.get("rhubarb_path")
     if rhubarb_path:
         rhubarb_file = Path(rhubarb_path).expanduser()
@@ -71,7 +62,7 @@ def setup(args) -> None:
         except OSError as exc:
             raise ProjectError("logo is not a readable image") from exc
         logo = f"assets/logo{source.suffix.lower()}"
-        destination = home() / logo
+        destination = studio_home() / logo
         destination.parent.mkdir(parents=True, exist_ok=True)
         if source != destination:
             shutil.copy2(source, destination)
@@ -81,7 +72,7 @@ def setup(args) -> None:
     if args.avatar_pack:
         source = Path(args.avatar_pack).expanduser().resolve()
         manifest = validate_pack(source.parent, source.name)
-        destination = home() / "assets" / "avatar"
+        destination = studio_home() / "assets" / "avatar"
         if source != destination.resolve():
             if destination.exists():
                 shutil.rmtree(destination)
@@ -97,7 +88,6 @@ def setup(args) -> None:
         "version": 1, "brand": brand, "language": args.language or old.get("language") or "en",
         "voice_route": voice_route, "voice_id": voice_id,
         "avatar": avatar, "avatar_name": avatar_name, "avatar_pack": avatar_pack,
-        "engine_path": engine_path,
         "rhubarb_path": str(Path(rhubarb_path).expanduser().resolve()) if rhubarb_path else None,
         "output_dir": str(Path(args.output_dir or old.get("output_dir") or "~/Explainer Studio").expanduser().resolve()),
         "colors": colors, "logo": logo, "cta": args.cta or old.get("cta") or "",
@@ -120,18 +110,31 @@ def doctor(_) -> None:
         print("faster-whisper: available")
     except ImportError:
         print("faster-whisper: optional, needed for automatic word timing")
-    path = home() / "profile.json"
+    path = studio_home() / "profile.json"
     print(f"profile: {path if path.is_file() else 'not set up'}")
     try:
-        engine_root = resolve_engine_root(read_json(path) if path.is_file() else {})
-        print(f"engine: {engine_root}")
+        _, package_root = resolve_aivee()
+        manifest_path = Path(package_root) / "package.json"
+        version = read_json(manifest_path).get("version") if manifest_path.is_file() else "local checkout"
+        print(f"aivee: {version} ({package_root})")
     except ProjectError as exc:
-        print(f"engine: MISSING ({exc})")
+        print(f"aivee: MISSING ({exc})")
     profile = read_json(path) if path.is_file() else {}
     rhubarb = os.environ.get("RHUBARB_PATH") or profile.get("rhubarb_path") or shutil.which("rhubarb")
     if rhubarb and not Path(rhubarb).expanduser().is_file():
         rhubarb = shutil.which(rhubarb)
     print(f"rhubarb: {Path(rhubarb).expanduser().resolve() if rhubarb else 'optional; amplitude lip sync will be used'}")
+
+
+def install_engine(_) -> None:
+    command, package_root = ensure_aivee()
+    result = subprocess.run([*command, "capabilities"], capture_output=True, text=True)
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()
+        raise ProjectError(f"AIVEE installation could not be verified: {detail[-1200:]}")
+    manifest_path = Path(package_root) / "package.json"
+    version = read_json(manifest_path).get("version") if manifest_path.is_file() else "local checkout"
+    print(f"AIVEE {version} ready: {package_root}")
 
 
 def init(args) -> None:
@@ -169,12 +172,12 @@ def init(args) -> None:
         "music": None, "logo": None, "cta": profile.get("cta", ""),
     }
     if profile.get("logo"):
-        source = home() / profile["logo"]
+        source = studio_home() / profile["logo"]
         if source.is_file():
             project["logo"] = "assets/" + source.name
             shutil.copy2(source, root / project["logo"])
     if profile.get("avatar_pack"):
-        source = home() / profile["avatar_pack"]
+        source = studio_home() / profile["avatar_pack"]
         if not source.is_dir():
             raise ProjectError(f"saved avatar pack not found: {source}")
         copy_pack(source, root / "assets" / "avatar")
@@ -356,6 +359,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("doctor", help="check local tools")
     p.set_defaults(handler=doctor)
+    p = sub.add_parser("install-engine", help="install or verify AIVEE for this Studio profile")
+    p.set_defaults(handler=install_engine)
     p = sub.add_parser("setup", help="save a creator profile")
     p.add_argument("--brand")
     p.add_argument("--language")
@@ -363,7 +368,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--voice-id")
     p.add_argument("--avatar", choices=["built-in", "custom"])
     p.add_argument("--avatar-pack")
-    p.add_argument("--engine-path")
     p.add_argument("--rhubarb-path")
     p.add_argument("--output-dir")
     p.add_argument("--logo")

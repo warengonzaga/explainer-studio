@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,6 +12,10 @@ from pathlib import Path
 
 class ProjectError(Exception):
     """A recoverable project or input error."""
+
+
+def studio_home() -> Path:
+    return Path(os.environ.get("EXPLAINER_STUDIO_HOME", Path.home() / ".explainer-studio")).expanduser()
 
 
 def command(name: str) -> str:
