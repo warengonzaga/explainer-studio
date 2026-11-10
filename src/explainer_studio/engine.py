@@ -16,23 +16,126 @@ from PIL import Image
 
 from .audio import mouth_at, mouth_track, phonetic_mouth_track
 from .avatar import _is_blinking, draw_avatar
-from .common import ProjectError, probe_duration, project_file, read_json, write_json
+from .common import ProjectError, probe_duration, project_file, read_json, studio_home, write_json
 from .render import avatar_box, render_background, storyboard_hash
 from .timing import validate_storyboard, validate_words
 
 
-def resolve_engine_root(profile: dict) -> Path:
-    configured = os.environ.get("AI_VIDEO_ENGINE_PATH") or profile.get("engine_path")
-    if not configured:
-        raise ProjectError("AI Video Editing Engine path is missing; set it during `explainer setup`")
-    root = Path(configured).expanduser().resolve()
-    if not root.is_dir() or not (root / "src" / "cli.mjs").is_file():
-        raise ProjectError(f"Engine path must contain src/cli.mjs: {root}")
-    if not (root / "node_modules" / "hyperframes" / "package.json").is_file() or not (root / "node_modules" / "gsap" / "package.json").is_file():
-        raise ProjectError(f"Engine dependencies are missing; run `npm install` in {root}")
-    if not shutil.which("node"):
-        raise ProjectError("Node.js is required to render through the AI Video Editing Engine")
-    return root
+AIVEE_VERSION = "0.1.0"
+UNDICI_VERSION = "7.30.2"
+
+
+def _node() -> str:
+    node = shutil.which("node")
+    if not node:
+        raise ProjectError("Node.js 22 or later is required for AIVEE")
+    try:
+        result = subprocess.run([node, "--version"], capture_output=True, text=True)
+    except OSError as exc:
+        raise ProjectError("Could not run Node.js; repair the Node.js installation and retry") from exc
+    version = result.stdout.strip().removeprefix("v").split(".", 1)[0]
+    if result.returncode or not version.isdigit() or int(version) < 22:
+        raise ProjectError("Node.js 22 or later is required for AIVEE")
+    return node
+
+
+def _package_cli(package_root: Path) -> tuple[Path, str] | None:
+    manifest_path = package_root / "package.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = read_json(manifest_path)
+    except ProjectError:
+        return None
+    if not isinstance(manifest, dict) or manifest.get("name") != "aivee" or manifest.get("version") != AIVEE_VERSION:
+        return None
+    entry = manifest.get("bin")
+    entry = entry.get("aivee") if isinstance(entry, dict) else entry
+    if not isinstance(entry, str):
+        return None
+    root = package_root.resolve()
+    cli = (root / entry).resolve()
+    if not cli.is_relative_to(root) or not cli.is_file():
+        return None
+    return cli, str(root)
+
+
+def _installed_aivee(node: str) -> tuple[list[str], str] | None:
+    npm = shutil.which("npm")
+    roots = []
+    if npm:
+        try:
+            result = subprocess.run([npm, "root", "-g"], capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                roots.append(Path(result.stdout.strip()))
+        except OSError:
+            pass
+    runtime = studio_home() / "runtime"
+    try:
+        manifest = read_json(runtime / "package.json")
+    except ProjectError:
+        manifest = None
+    if (
+        isinstance(manifest, dict)
+        and manifest.get("dependencies", {}).get("aivee") == AIVEE_VERSION
+        and manifest.get("overrides", {}).get("hyperframes", {}).get("undici") == UNDICI_VERSION
+    ):
+        roots.append(runtime / "node_modules")
+    for modules in roots:
+        resolved = _package_cli(modules / "aivee")
+        if resolved:
+            cli, package_root = resolved
+            return [node, str(cli)], package_root
+    return None
+
+
+def resolve_aivee() -> tuple[list[str], str]:
+    node = _node()
+    checkout = os.environ.get("AI_VIDEO_ENGINE_PATH")
+    if checkout:
+        root = Path(checkout).expanduser().resolve()
+        cli = root / "src" / "cli.mjs"
+        if not cli.is_file():
+            raise ProjectError(f"AI_VIDEO_ENGINE_PATH must point to an Engine checkout with src/cli.mjs: {root}")
+        return [node, str(cli)], str(root)
+    installed = _installed_aivee(node)
+    if installed:
+        return installed
+    raise ProjectError(f"AIVEE {AIVEE_VERSION} is not installed; run `explainer install-engine` to install it")
+
+
+def ensure_aivee() -> tuple[list[str], str]:
+    node = _node()
+    if os.environ.get("AI_VIDEO_ENGINE_PATH"):
+        return resolve_aivee()
+    installed = _installed_aivee(node)
+    if installed:
+        return installed
+    npm = shutil.which("npm")
+    if not npm:
+        raise ProjectError("npm is required to install AIVEE; install Node.js 22 or later with npm")
+    runtime = studio_home() / "runtime"
+    try:
+        runtime.mkdir(parents=True, exist_ok=True)
+        write_json(runtime / "package.json", {
+            "private": True,
+            "dependencies": {"aivee": AIVEE_VERSION},
+            "overrides": {"hyperframes": {"undici": UNDICI_VERSION}},
+        })
+        result = subprocess.run(
+            [npm, "install"],
+            cwd=runtime,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise ProjectError("Could not run npm to install AIVEE; check npm permissions and retry") from exc
+    if result.returncode:
+        raise ProjectError(f"Could not install AIVEE {AIVEE_VERSION} (npm exit {result.returncode}); check network access and npm configuration")
+    installed = _installed_aivee(node)
+    if not installed:
+        raise ProjectError(f"AIVEE {AIVEE_VERSION} installation completed but the CLI could not be found")
+    return installed
 
 
 def avatar_intervals(keys: list[tuple[str, str, bool]], fps: int, duration: float) -> list[dict]:
@@ -50,18 +153,17 @@ def avatar_intervals(keys: list[tuple[str, str, bool]], fps: int, duration: floa
     return intervals
 
 
-def _engine_cli(root: Path, args: list[str], env: dict | None = None) -> str:
-    cli = root / "src" / "cli.mjs"
+def _engine_cli(command: list[str], cwd: Path, args: list[str], env: dict | None = None) -> str:
     process_env = os.environ.copy()
     if env:
         process_env.update(env)
     result = subprocess.run(
-        ["node", str(cli), *args], cwd=root, capture_output=True, text=True,
+        [*command, *args], cwd=cwd, capture_output=True, text=True,
         encoding="utf-8", errors="replace", env=process_env,
     )
     if result.returncode:
         detail = (result.stderr or result.stdout).strip()
-        raise ProjectError(f"Engine command failed: {detail[-1200:]}")
+        raise ProjectError(f"AIVEE command failed: {detail[-1200:]}")
     return result.stdout.strip()
 
 
@@ -161,7 +263,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     if output.exists():
         raise ProjectError(f"output already exists: {output}")
 
-    engine_root = resolve_engine_root(profile)
+    engine_command, _ = resolve_aivee()
     width, height = (1080, 1920) if portrait else (int(project.get("width", 1920)), int(project.get("height", 1080)))
     fps = int(project.get("fps", 60))
     if preview:
@@ -172,6 +274,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
 
     scratch_root = root / ".work"
     scratch_root.mkdir(parents=True, exist_ok=True)
+    engine_workspace = root / "engine"
+    engine_workspace.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="engine-export-", dir=scratch_root) as temporary:
         temporary = Path(temporary)
         background = render_background(root, temporary / "studio-background.mp4", preview, portrait)
@@ -197,8 +301,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             avatar_paths[(pose, mouth, blinking)] = path
 
         slug = f"studio-{uuid4().hex[:12]}"
-        project_path = engine_root / "video-projects" / slug
-        _engine_cli(engine_root, ["project", "create", slug, f"{width}x{height}", str(fps), f"{duration:.6f}"])
+        project_path = engine_workspace / "video-projects" / slug
+        _engine_cli(engine_command, engine_workspace, ["project", "create", slug, f"{width}x{height}", str(fps), f"{duration:.6f}"])
         narration = temporary / f"studio-narration{voice.suffix.lower()}"
         shutil.copy2(voice, narration)
         visual_records = []
@@ -221,7 +325,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             asset_records.append((music_copy, "studio-music"))
         asset_records.extend((source, asset_id) for asset_id, source, _ in visual_records)
         for path, asset_id in dict.fromkeys(asset_records):
-            _engine_cli(engine_root, ["asset", "register", str(project_path), str(path), asset_id])
+            _engine_cli(engine_command, project_path, ["asset", "register", str(project_path), str(path), asset_id])
 
         timeline_path = project_path / "timeline.json"
         timeline = read_json(timeline_path)
@@ -243,7 +347,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             "bubble": {"tailSide": "left", "tailPosition": 0.35, "tailSizePixels": max(8, round(26 * type_scale)), "cornerRadiusPixels": max(8, round(28 * type_scale))},
         })
         caption_track_path = temporary / "studio-captions.json"
-        _engine_cli(engine_root, ["timeline", "captions", str(transcript_path), str(caption_track_path), str(caption_options_path)])
+        _engine_cli(engine_command, project_path, ["timeline", "captions", str(transcript_path), str(caption_track_path), str(caption_options_path)])
         captions = read_json(caption_track_path)
         captions["order"] = 4
         title_track = {
@@ -310,13 +414,13 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             timeline["audioMix"] = {"sidechain": [{"sourceTrackId": "studio-voice", "targetTrackId": "studio-music", "thresholdDb": -34, "ratio": 5, "attackSeconds": 0.02, "releaseSeconds": 0.4}]}
         timeline["audioMastering"] = {"integratedLoudnessLUFS": -16, "truePeakDBTP": -1.5, "loudnessRangeLU": 11}
         timeline["project"]["durationSeconds"] = duration
-        _write_engine_timeline(engine_root, timeline_path, timeline)
-        relative_timeline = timeline_path.relative_to(engine_root)
-        _engine_cli(engine_root, ["timeline", "validate", str(relative_timeline)])
+        _write_engine_timeline(project_path, timeline_path, timeline)
+        _engine_cli(engine_command, project_path, ["timeline", "validate", str(timeline_path)])
         output.parent.mkdir(parents=True, exist_ok=True)
         _engine_cli(
-            engine_root,
-            ["timeline", "render", str(project_path), str(relative_timeline), str(output.resolve()), "draft" if preview else "standard"],
+            engine_command,
+            project_path,
+            ["timeline", "render", str(project_path), str(timeline_path), str(output.resolve()), "draft" if preview else "standard"],
             _browser_env(temporary / "hyperframes-cache"),
         )
     return output

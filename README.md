@@ -24,20 +24,20 @@ For creative planning and animation authoring, our project recommendations are:
 | Codex | Astra | Sol |
 | Claude Code | Opus | Sonnet |
 
-Select the model in your chat environment. These recommendations guide creative work; rendering uses the local Engine. Every video still needs visual review.
+Select the model in your chat environment. These recommendations guide creative work; rendering uses the locally installed AIVEE CLI. Every video still needs visual review.
 
 The visual quality baseline is a deliberately composed scene with readable artwork, narration-timed object movement, and coherent visual progression. By default, show short narration-synced phrases in a speech bubble beside the presenter, with its tail pointing toward the avatar; keep it clear of the main visual and Reels controls. The Engine provides this as a configurable caption layout. See the [motion quality guide](skills/create-explainer/references/motion-quality.md) for authoring and review requirements.
 
 ## 🚀 Quick start
 
-Requirements: Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js 22+, and a local AI Video Editing Engine checkout. A published AIVEE package is not required: Studio calls the checkout's CLI with `node <engine-path>/src/cli.mjs` and does not import its JavaScript API. Run `npm install` once inside that checkout to install its local dependencies, then add it to setup with `--engine-path`; `AI_VIDEO_ENGINE_PATH` can override the saved path for a single session. Install Pillow and the Studio CLI:
+Requirements: Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js 22+, and npm. Install Pillow and the Studio CLI:
 
 ```bash
 python -m pip install -e .
 python scripts/explainer.py doctor
 ```
 
-Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, built-in geometric avatar, default colors, and `~/Explainer Studio` output. Set `AI_VIDEO_ENGINE_PATH` or provide the local Engine checkout path during setup. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. Setup checks for AIVEE and installs the supported npm package into the Studio user data directory when needed; users do not need to clone the Engine repository or install AIVEE separately. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, built-in geometric avatar, default colors, and `~/Explainer Studio` output. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
 For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`. Codex supports local marketplace installation from this repository.
 
@@ -53,7 +53,7 @@ Choose the built-in presenter, the bundled **Waren** sample avatar, or a sprite 
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
 3. Review the storyboard and approve it in chat.
 4. Render a preview through the Engine, request revisions, then render and inspect the final video. Use `render-legacy` only to compare against the old Studio compositor.
-5. Share the MP4 and editable project folder.
+5. Share the MP4 and Studio project folder; its editable AIVEE project is retained under `engine/video-projects/`.
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs.
 
@@ -68,7 +68,7 @@ Releases follow Clean Flow: merge feature work into `dev`, then promote stable `
 
 ## 📋 Limitations
 
-The first version provides a deterministic template renderer and basic media checks. It does not capture microphone audio or generate images inside the plugin. Automatic transcription downloads a model on first use. The five-state sample avatar groups related phonetic cues; a pack with dedicated Rhubarb A-H artwork can improve articulation detail. Full resolution renders depend on local CPU, memory, and FFmpeg performance.
+Studio guides story, narration timing, storyboard review, and explainer-specific assets; AIVEE handles editable timeline composition and rendering. It does not capture microphone audio or generate images inside the plugin. Automatic transcription downloads a model on first use. The five-state sample avatar groups related phonetic cues; a pack with dedicated Rhubarb A-H artwork can improve articulation detail. Full resolution renders depend on local CPU, memory, and FFmpeg performance.
 
 ## 📄 License
 
