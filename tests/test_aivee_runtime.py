@@ -15,7 +15,7 @@ from explainer_studio.engine import AIVEE_VERSION, UNDICI_VERSION, ensure_aivee
 
 class AiveeRuntimeTest(unittest.TestCase):
     def test_uses_compatible_global_npm_install(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "projects") as temporary:
+        with tempfile.TemporaryDirectory() as temporary:
             global_root = Path(temporary) / "global" / "node_modules"
             package = global_root / "aivee"
             (package / "src").mkdir(parents=True)
@@ -41,7 +41,7 @@ class AiveeRuntimeTest(unittest.TestCase):
         self.assertEqual(run_mock.call_count, 2)
 
     def test_installs_published_package_to_studio_home_when_missing(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "projects") as temporary:
+        with tempfile.TemporaryDirectory() as temporary:
             studio_home = Path(temporary) / "studio"
             package = studio_home / "runtime" / "node_modules" / "aivee"
             install_manifest = None
