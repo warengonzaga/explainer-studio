@@ -364,8 +364,13 @@ def retime(args) -> None:
             ignored.add(old_voice.name)
         return ignored
 
+    target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copytree(source, target, ignore=ignore_artifacts)
+        target.mkdir()
+    except FileExistsError as exc:
+        raise ProjectError(f"retimed project already exists: {target}") from exc
+    try:
+        shutil.copytree(source, target, ignore=ignore_artifacts, dirs_exist_ok=True)
         (target / "renders").mkdir(exist_ok=True)
         new_voice = target / "assets" / f"voice-{uuid.uuid4().hex[:8]}{voice.suffix.lower()}"
         shutil.copy2(voice, new_voice)
