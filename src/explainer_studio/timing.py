@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -14,17 +16,45 @@ def tokens(text: str) -> list[str]:
     return [x.casefold() for x in re.findall(r"[^\W_]+(?:['’][^\W_]+)?", text, re.UNICODE)]
 
 
+def storyboard_hash(board: dict) -> str:
+    data = json.dumps(
+        {"scenes": board["scenes"], "words_sha256": board.get("source", {}).get("words_sha256")},
+        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+
+def _invalidate_storyboard(root: Path) -> None:
+    path = root / "storyboard.json"
+    if not path.is_file():
+        return
+    board = read_json(path)
+    if not isinstance(board, dict) or not isinstance(board.get("scenes"), list):
+        return
+    if not isinstance(board.get("source"), dict):
+        board["source"] = {}
+    board["source"]["words_sha256"] = file_hash(root / "words.json")
+    board["approved"] = False
+    board.pop("approval_hash", None)
+    write_json(path, board)
+
+
 def validate_words(words: list[dict], duration: float) -> None:
-    if not isinstance(words, list) or not words:
+    if not math.isfinite(duration) or duration <= 0 or not isinstance(words, list) or not words:
         raise ProjectError("word timings must be a nonempty JSON array")
-    previous = -1.0
+    previous = 0.0
     for index, word in enumerate(words):
         try:
-            start, end = float(word["start"]), float(word["end"])
+            raw_start, raw_end = word["start"], word["end"]
             value = word["text"]
         except (KeyError, TypeError, ValueError) as exc:
             raise ProjectError(f"invalid word at index {index}") from exc
-        if not isinstance(value, str) or not tokens(value) or start < previous or end <= start or end > duration + 0.25:
+        if (isinstance(raw_start, bool) or not isinstance(raw_start, (int, float))
+                or isinstance(raw_end, bool) or not isinstance(raw_end, (int, float))):
+            raise ProjectError(f"invalid timing or text at word {index}")
+        start, end = float(raw_start), float(raw_end)
+        if (not isinstance(value, str) or not tokens(value) or not math.isfinite(start) or not math.isfinite(end)
+                or start < previous or end <= start or start < 0 or end > duration):
             raise ProjectError(f"invalid timing or text at word {index}")
         previous = start
 
@@ -45,11 +75,12 @@ def transcribe(root: Path, model_name: str = "small", language: str | None = Non
     for segment in segments:
         for word in segment.words or []:
             if tokens(word.word):
-                start = round(word.start, 3)
-                end = max(round(word.end, 3), start + 0.02)
+                start = max(0, min(round(word.start, 3), duration - 0.02))
+                end = min(duration, max(round(word.end, 3), start + 0.02))
                 words.append({"text": word.word.strip(), "start": start, "end": end})
     validate_words(words, duration)
     write_json(root / "words.json", words)
+    _invalidate_storyboard(root)
     return len(words)
 
 
@@ -59,6 +90,7 @@ def import_words(root: Path, source: Path) -> int:
     words = read_json(source)
     validate_words(words, probe_duration(voice))
     write_json(root / "words.json", words)
+    _invalidate_storyboard(root)
     return len(words)
 
 
@@ -109,7 +141,10 @@ def build_storyboard(root: Path) -> dict:
         })
     board = {
         "version": 1, "approved": False, "scenes": scenes,
-        "source": {"script_sha256": file_hash(root / "script.txt"), "voice_sha256": file_hash(voice)},
+        "source": {
+            "script_sha256": file_hash(root / "script.txt"), "voice_sha256": file_hash(voice),
+            "words_sha256": file_hash(root / "words.json"),
+        },
     }
     validate_storyboard(root, board, duration)
     write_json(root / "storyboard.json", board)
@@ -123,16 +158,21 @@ def validate_storyboard(root: Path, board: dict, duration: float | None = None) 
     voice = project_file(root, project["voice"])
     if duration is None:
         duration = probe_duration(voice)
+    validate_words(read_json(root / "words.json"), duration)
     source = board.get("source")
+    words_path = root / "words.json"
     if not isinstance(source, dict) or source.get("script_sha256") != file_hash(root / "script.txt") or source.get("voice_sha256") != file_hash(voice):
         raise ProjectError("script or narration changed after storyboarding; run storyboard again")
+    if source.get("words_sha256") != file_hash(words_path):
+        raise ProjectError("word timings changed; review and approve this storyboard again")
     previous = 0.0
     for index, scene in enumerate(board["scenes"]):
         try:
             start, end = float(scene["start"]), float(scene["end"])
         except (KeyError, TypeError, ValueError) as exc:
             raise ProjectError(f"scene {index + 1} needs numeric start and end") from exc
-        if abs(start - previous) > 0.02 or end <= start or end > duration + 0.05:
+        if (not math.isfinite(start) or not math.isfinite(end) or start < 0 or abs(start - previous) > 0.02
+                or end <= start or end > duration + 0.05):
             raise ProjectError(f"scene {index + 1} has a gap, overlap, or invalid duration")
         if not isinstance(scene.get("headline"), str) or not scene["headline"].strip():
             raise ProjectError(f"scene {index + 1} needs a headline")
@@ -166,7 +206,7 @@ def validate_storyboard(root: Path, board: dict, duration: float | None = None) 
                 raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} must fit inside the frame")
         if scene.get("emphasis_at") is not None:
             cue = float(scene["emphasis_at"])
-            if cue < start or cue >= end:
+            if not math.isfinite(cue) or cue < start or cue >= end:
                 raise ProjectError(f"scene {index + 1} emphasis cue is outside its time window")
         previous = end
     if abs(previous - duration) > 0.1:

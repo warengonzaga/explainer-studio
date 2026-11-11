@@ -5,7 +5,7 @@ description: Set up Explainer Studio for the first time, repair missing local to
 
 # Set up Explainer Studio
 
-Resolve the plugin root from this file (`../..`). Run `python <plugin-root>/scripts/explainer.py doctor` first. Explain missing tools in plain language. Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js 22+, and npm are required; `faster-whisper` is optional until automatic transcription is needed. Use a project-local virtual environment for Python packages when possible. Do not put an API key in command arguments, chat output, or `profile.json`.
+Resolve the plugin root from this file (`../..`). Run `python <plugin-root>/scripts/explainer.py bootstrap` to install Studio's Python dependencies into its managed user environment, then run `doctor`. Explain missing tools in plain language. Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge are required; `faster-whisper` is optional until automatic transcription is needed. The launcher uses the managed Python environment for later commands. Do not change system Python or put an API key in command arguments, chat output, or `profile.json`.
 
 Explainer Studio installs and manages its AIVEE CLI dependency for the user. If `doctor` reports AIVEE missing, run `python <plugin-root>/scripts/explainer.py install-engine`, then rerun `doctor` and do not continue until it reports AIVEE available. Reuse a compatible AIVEE npm installation when present; otherwise install the Studio-supported package in the Studio user data directory. Do not ask users to clone the Engine repository, install AIVEE separately, or provide an Engine path. If Node.js, npm, or installation is unavailable, explain the specific prerequisite and stop setup before saving a profile.
 

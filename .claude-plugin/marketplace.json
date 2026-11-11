@@ -1,6 +1,8 @@
 {
-  "name": "explainer-studio-local",
-  "description": "Explainer Studio plugin",
+  "name": "explainer-studio",
+  "metadata": {
+    "description": "Chat-guided explainer production plugin for Codex and Claude Code."
+  },
   "owner": {"name": "Explainer Studio"},
   "plugins": [
     {
