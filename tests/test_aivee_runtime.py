@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -43,7 +44,9 @@ class AiveeRuntimeTest(unittest.TestCase):
 
             with patch("explainer_studio.engine.studio_home", return_value=Path(temporary) / "studio"), patch(
                 "explainer_studio.engine.shutil.which", side_effect=lambda name: f"{name}.exe",
-            ), patch("explainer_studio.engine.subprocess.run", side_effect=run) as run_mock:
+            ), patch("explainer_studio.engine.subprocess.run", side_effect=run) as run_mock, patch.dict(
+                os.environ, {"AI_VIDEO_ENGINE_PATH": str(Path(temporary) / "local-engine-checkout")},
+            ):
                 command, package_root = ensure_aivee()
 
         self.assertEqual(command, ["node.exe", str(package / "src" / "cli.mjs")])

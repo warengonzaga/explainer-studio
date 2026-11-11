@@ -96,6 +96,15 @@ class WorkflowTest(unittest.TestCase):
                 ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=550:duration=3", "-c:a", "libmp3lame", str(new_voice)],
                 check=True,
             )
+            nested = project / "retimed"
+            rejected = cli("retime", project, nested, "--voice", new_voice, "--words", timing, success=False)
+            self.assertIn("must not overlap", rejected.stderr)
+            self.assertFalse(nested.exists())
+            invalid_timing = base / "invalid-words.json"
+            invalid_timing.write_text("{}", encoding="utf-8")
+            failed = cli("retime", project, base / "failed-retime", "--voice", new_voice, "--words", invalid_timing, success=False)
+            self.assertIn("word timings must be a nonempty JSON array", failed.stderr)
+            self.assertFalse((base / "failed-retime").exists())
             shifted_words = [{**word, "start": word["start"] + .1, "end": word["end"] + .1} for word in changed_words]
             timing.write_text(json.dumps(shifted_words), encoding="utf-8")
             retimed = base / "retimed"

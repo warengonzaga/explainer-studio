@@ -89,16 +89,6 @@ def _installed_aivee(node: str) -> tuple[list[str], str] | None:
 
 def resolve_aivee() -> tuple[list[str], str]:
     node = _node()
-    checkout = os.environ.get("AI_VIDEO_ENGINE_PATH")
-    if checkout:
-        root = Path(checkout).expanduser().resolve()
-        cli = root / "src" / "cli.mjs"
-        if not cli.is_file():
-            raise ProjectError(f"AI_VIDEO_ENGINE_PATH must point to an Engine checkout with src/cli.mjs: {root}")
-        command = [node, str(cli)]
-        if not _verify_aivee(command):
-            raise ProjectError(f"AIVEE checkout is not ready to render: {root}")
-        return command, str(root)
     installed = _installed_aivee(node)
     if installed:
         return installed
@@ -107,8 +97,6 @@ def resolve_aivee() -> tuple[list[str], str]:
 
 def ensure_aivee() -> tuple[list[str], str]:
     node = _node()
-    if os.environ.get("AI_VIDEO_ENGINE_PATH"):
-        return resolve_aivee()
     installed = _installed_aivee(node)
     if installed:
         return installed

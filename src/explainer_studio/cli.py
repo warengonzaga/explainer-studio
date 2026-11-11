@@ -227,7 +227,7 @@ def doctor(_) -> None:
     try:
         _, package_root = resolve_aivee()
         manifest_path = Path(package_root) / "package.json"
-        version = read_json(manifest_path).get("version") if manifest_path.is_file() else "local checkout"
+        version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
         print(f"aivee: {version} ({package_root})")
     except ProjectError as exc:
         print(f"aivee: NOT READY ({exc})")
@@ -255,7 +255,7 @@ def install_engine(_) -> None:
         detail = (result.stderr or result.stdout).strip()
         raise ProjectError(f"AIVEE installation could not be verified: {detail[-1200:]}")
     manifest_path = Path(package_root) / "package.json"
-    version = read_json(manifest_path).get("version") if manifest_path.is_file() else "local checkout"
+    version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
     print(f"AIVEE {version} ready: {package_root}")
 
 
@@ -345,6 +345,8 @@ def retime(args) -> None:
 
     source = Path(args.project).expanduser().resolve()
     target = Path(args.new_project).expanduser().resolve()
+    if target == source or target.is_relative_to(source) or source.is_relative_to(target):
+        raise ProjectError("new project must not overlap the source project")
     if target.exists():
         raise ProjectError(f"retimed project already exists: {target}")
     voice = Path(args.voice).expanduser().resolve()
@@ -362,34 +364,38 @@ def retime(args) -> None:
             ignored.add(old_voice.name)
         return ignored
 
-    shutil.copytree(source, target, ignore=ignore_artifacts)
-    (target / "renders").mkdir(exist_ok=True)
-    new_voice = target / "assets" / f"voice-{uuid.uuid4().hex[:8]}{voice.suffix.lower()}"
-    shutil.copy2(voice, new_voice)
-    project = read_json(target / "project.json")
-    project["voice"] = str(new_voice.relative_to(target)).replace("\\", "/")
-    write_json(target / "project.json", project)
-    if args.words:
-        import_words(target, Path(args.words).expanduser().resolve())
-    else:
-        transcribe(target, args.model, args.language)
-    board = build_storyboard(target)
-    if len(board["scenes"]) != len(old_board["scenes"]):
-        raise ProjectError("retimed scene count differs; review the new storyboard before copying scene choices")
-    for new, old in zip(board["scenes"], old_board["scenes"]):
-        for key in ("headline", "pose", "asset", "visual_label"):
-            if key in old:
-                new[key] = old[key]
-        old_duration = float(old["end"]) - float(old["start"])
-        new_duration = float(new["end"]) - float(new["start"])
-        if old_duration > 0:
-            new["visual_cues"] = [{
-                **cue,
-                "start": float(new["start"]) + (float(cue["start"]) - float(old["start"])) / old_duration * new_duration,
-                "duration": float(cue["duration"]) / old_duration * new_duration,
-            } for cue in old.get("visual_cues", [])]
-    validate_storyboard(target, board)
-    write_json(target / "storyboard.json", board)
+    try:
+        shutil.copytree(source, target, ignore=ignore_artifacts)
+        (target / "renders").mkdir(exist_ok=True)
+        new_voice = target / "assets" / f"voice-{uuid.uuid4().hex[:8]}{voice.suffix.lower()}"
+        shutil.copy2(voice, new_voice)
+        project = read_json(target / "project.json")
+        project["voice"] = str(new_voice.relative_to(target)).replace("\\", "/")
+        write_json(target / "project.json", project)
+        if args.words:
+            import_words(target, Path(args.words).expanduser().resolve())
+        else:
+            transcribe(target, args.model, args.language)
+        board = build_storyboard(target)
+        if len(board["scenes"]) != len(old_board["scenes"]):
+            raise ProjectError("retimed scene count differs; review the new storyboard before copying scene choices")
+        for new, old in zip(board["scenes"], old_board["scenes"]):
+            for key in ("headline", "pose", "asset", "visual_label"):
+                if key in old:
+                    new[key] = old[key]
+            old_duration = float(old["end"]) - float(old["start"])
+            new_duration = float(new["end"]) - float(new["start"])
+            if old_duration > 0:
+                new["visual_cues"] = [{
+                    **cue,
+                    "start": float(new["start"]) + (float(cue["start"]) - float(old["start"])) / old_duration * new_duration,
+                    "duration": float(cue["duration"]) / old_duration * new_duration,
+                } for cue in old.get("visual_cues", [])]
+        validate_storyboard(target, board)
+        write_json(target / "storyboard.json", board)
+    except Exception:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
     print(f"retimed project created: {target}; review and approve the new storyboard")
 
 
