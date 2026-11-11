@@ -17,7 +17,7 @@ from .common import ProjectError, probe_duration, project_file, read_json, studi
 from .timing import storyboard_hash, validate_storyboard, validate_words
 
 
-AIVEE_VERSION = "0.1.0"
+AIVEE_VERSION = "0.1.1"
 UNDICI_VERSION = "7.30.2"
 
 

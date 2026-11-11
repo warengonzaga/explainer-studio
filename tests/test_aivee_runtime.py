@@ -53,10 +53,17 @@ class AiveeRuntimeTest(unittest.TestCase):
         self.assertEqual(package_root, str(package))
         self.assertEqual(run_mock.call_count, 3)
 
-    def test_installs_published_package_to_studio_home_when_missing(self):
+    def test_replaces_stale_global_package_with_published_version(self):
         with tempfile.TemporaryDirectory() as temporary:
             studio_home = Path(temporary) / "studio"
             package = studio_home / "runtime" / "node_modules" / "aivee"
+            global_root = Path(temporary) / "global" / "node_modules"
+            stale_package = global_root / "aivee"
+            (stale_package / "src").mkdir(parents=True)
+            (stale_package / "src" / "cli.mjs").write_text("", encoding="utf-8")
+            (stale_package / "package.json").write_text(json.dumps({
+                "name": "aivee", "version": "0.1.0", "bin": {"aivee": "src/cli.mjs"},
+            }), encoding="utf-8")
             install_manifest = None
 
             def run(args, **_):
@@ -64,7 +71,7 @@ class AiveeRuntimeTest(unittest.TestCase):
                 if args[1:] == ["--version"]:
                     return CompletedProcess(args, 0, "v22.22.2\n", "")
                 if args[1:] == ["root", "-g"]:
-                    return CompletedProcess(args, 1, "", "not installed")
+                    return CompletedProcess(args, 0, f"{global_root}\n", "")
                 if args[1] == "install":
                     install_manifest = json.loads((studio_home / "runtime" / "package.json").read_text(encoding="utf-8"))
                     (package / "src").mkdir(parents=True)
