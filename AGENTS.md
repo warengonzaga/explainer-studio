@@ -22,5 +22,5 @@
 ## Release workflow
 
 - `.github/workflows/release.yml` runs only on pushes to `main` after a `dev` to `main` release merge.
-- Keep the Release Build Flow Action's `main-branch` input aligned with the production branch.
-- The action may update `CHANGELOG.md`, version manifests, tags, and GitHub Releases; review its permissions and configuration before changing them.
+- Pin `actions/checkout` and `wgtechlabs/release-build-flow-action` to the same commits `wgtechlabs/clean-comms` uses. Leave the action inputs unset so its defaults apply. The `main-branch` default is `main`; keep that aligned with the production branch.
+- The action may update `CHANGELOG.md`, sync `pyproject.toml`, and publish tags and GitHub Releases. Review its permissions and configuration before changing them.
