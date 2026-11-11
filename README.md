@@ -72,7 +72,7 @@ python -m pip install -e ".[transcribe]"
 python -m unittest discover -s tests -v
 ```
 
-Releases follow Clean Flow: merge feature work into `dev`, then promote stable `dev` to `main`. A push to `main` runs the [Release Build Flow Action](https://github.com/wgtechlabs/release-build-flow-action) to update the changelog, sync `pyproject.toml`, and publish a GitHub Release when the commit history calls for a version bump.
+Releases follow Clean Flow: merge feature work into `dev`, then promote stable `dev` to `main`. A push to `main` runs the pinned [Release Build Flow Action](https://github.com/wgtechlabs/release-build-flow-action) (`v1.8.0`) to update the changelog, sync `pyproject.toml`, and publish a GitHub Release when the commit history calls for a version bump.
 
 ## 📋 Limitations
 
