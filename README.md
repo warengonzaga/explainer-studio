@@ -11,8 +11,8 @@ Explainer Studio is a local plugin for making narrated explainer videos from Cod
 - Create and review word timed storyboards before rendering.
 - Use an original geometric presenter or prepare a custom sprite pack.
 - Start with the bundled presenter, a clean motion-graphics style, and phrase captions in a speech bubble beside the avatar.
-- Compose scenes, avatar states, and narration in an editable Engine timeline.
-- Render landscape or portrait video through the Engine and run basic media checks.
+- Compose scenes, avatar states, and narration in an editable AIVEE timeline.
+- Render landscape or portrait video through AIVEE and run basic media checks.
 - Keep prior narration and renders intact when creating a new take.
 
 Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription and ElevenLabs require their optional runtime and account credentials.
@@ -26,20 +26,28 @@ For creative planning and animation authoring, our project recommendations are:
 
 Select the model in your chat environment. These recommendations guide creative work; rendering uses the locally installed AIVEE CLI. Every video still needs visual review.
 
-The visual quality baseline is a deliberately composed scene with readable artwork, narration-timed object movement, and coherent visual progression. By default, show short narration-synced phrases in a speech bubble beside the presenter, with its tail pointing toward the avatar; keep it clear of the main visual and Reels controls. The Engine provides this as a configurable caption layout. See the [motion quality guide](skills/create-explainer/references/motion-quality.md) for authoring and review requirements.
+The visual quality baseline is a deliberately composed scene with readable artwork, narration-timed object movement, and coherent visual progression. By default, show short narration-synced phrases in a speech bubble beside the presenter, with its tail pointing toward the avatar; keep it clear of the main visual and Reels controls. AIVEE provides this as a configurable caption layout. See the [motion quality guide](skills/create-explainer/references/motion-quality.md) for authoring and review requirements.
 
 ## 🚀 Quick start
 
-Requirements: Python 3.11+, Pillow, FFmpeg, ffprobe, Node.js 22+, and npm. Install Pillow and the Studio CLI:
+Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. When running from a source checkout, bootstrap Studio's managed Python environment:
 
 ```bash
-python -m pip install -e .
-python scripts/explainer.py doctor
+python scripts/explainer.py bootstrap
 ```
 
-Install the plugin in Codex or Claude Code, invoke **Set up Explainer Studio**, then ask for a video topic in chat. Setup checks for AIVEE and installs the supported npm package into the Studio user data directory when needed; users do not need to clone the Engine repository or install AIVEE separately. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, built-in geometric avatar, default colors, and `~/Explainer Studio` output. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps its Python dependencies, checks the machine, and installs the supported AIVEE npm package into the Studio user data directory when needed; users do not need to clone the Engine repository or install AIVEE separately. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, built-in geometric avatar, default colors, and `~/Explainer Studio` output. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
-For local Claude Code development, run `claude --plugin-dir <path-to-this-repo>`. Codex supports local marketplace installation from this repository.
+For a local checkout, add this repository as a plugin marketplace and install `explainer-studio`:
+
+```text
+Claude Code: /plugin marketplace add warengonzaga/explainer-studio
+Claude Code: /plugin install explainer-studio@explainer-studio
+Codex:       codex plugin marketplace add warengonzaga/explainer-studio
+Codex:       codex plugin add explainer-studio@explainer-studio
+```
+
+Claude Code also supports local development with `claude --plugin-dir <path-to-this-repo>`.
 
 ## 🎙️ Voice and avatars
 
@@ -52,10 +60,10 @@ Choose the built-in presenter, the bundled **Waren** sample avatar, or a sprite 
 1. Choose a topic, audience, length, and language; review the script in chat.
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
 3. Review the storyboard and approve it in chat.
-4. Render a preview through the Engine, request revisions, then render and inspect the final video. Use `render-legacy` only to compare against the old Studio compositor.
+4. Render a preview through AIVEE, request revisions, then render and inspect the final video. AIVEE owns all composition and rendering.
 5. Share the MP4 and Studio project folder; its editable AIVEE project is retained under `engine/video-projects/`.
 
-Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs.
+Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
 ## 🛠️ Development
 

@@ -13,9 +13,19 @@ sys.path.insert(0, str(ROOT / "src"))
 from explainer_studio.audio import map_phonetic_cues, phonetic_mouth_track
 from explainer_studio.common import ProjectError
 from explainer_studio.engine import avatar_intervals
+from explainer_studio.timing import validate_words
 
 
 class EngineTimelineTest(unittest.TestCase):
+    def test_word_timing_validation_rejects_negative_nonfinite_and_out_of_range(self):
+        for word in (
+            {"text": "hello", "start": -0.1, "end": 0.2},
+            {"text": "hello", "start": float("nan"), "end": 0.2},
+            {"text": "hello", "start": 2.8, "end": 3.1},
+        ):
+            with self.subTest(word=word), self.assertRaises(ProjectError):
+                validate_words([word], 3)
+
     def test_phonetic_cues_map_to_the_sample_pack_states(self):
         cues = [
             {"start": 0.0, "end": 0.2, "value": "A"},

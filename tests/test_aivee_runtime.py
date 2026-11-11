@@ -14,6 +14,14 @@ from explainer_studio.engine import AIVEE_VERSION, UNDICI_VERSION, ensure_aivee
 
 
 class AiveeRuntimeTest(unittest.TestCase):
+    @staticmethod
+    def capabilities(args):
+        if args[-1] != "capabilities":
+            return None
+        return CompletedProcess(args, 0, json.dumps({
+            "render": {"requirementsAvailable": True, "outputs": {"mp4": {"defaultCodecAvailable": True}}},
+        }), "")
+
     def test_uses_compatible_global_npm_install(self):
         with tempfile.TemporaryDirectory() as temporary:
             global_root = Path(temporary) / "global" / "node_modules"
@@ -29,6 +37,8 @@ class AiveeRuntimeTest(unittest.TestCase):
                     return CompletedProcess(args, 0, "v22.22.2\n", "")
                 if args[1:] == ["root", "-g"]:
                     return CompletedProcess(args, 0, f"{global_root}\n", "")
+                if capabilities := self.capabilities(args):
+                    return capabilities
                 self.fail(f"unexpected command: {args}")
 
             with patch("explainer_studio.engine.studio_home", return_value=Path(temporary) / "studio"), patch(
@@ -38,7 +48,7 @@ class AiveeRuntimeTest(unittest.TestCase):
 
         self.assertEqual(command, ["node.exe", str(package / "src" / "cli.mjs")])
         self.assertEqual(package_root, str(package))
-        self.assertEqual(run_mock.call_count, 2)
+        self.assertEqual(run_mock.call_count, 3)
 
     def test_installs_published_package_to_studio_home_when_missing(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -60,6 +70,8 @@ class AiveeRuntimeTest(unittest.TestCase):
                         "name": "aivee", "version": AIVEE_VERSION, "bin": {"aivee": "src/cli.mjs"},
                     }), encoding="utf-8")
                     return CompletedProcess(args, 0, "added package", "")
+                if capabilities := self.capabilities(args):
+                    return capabilities
                 self.fail(f"unexpected command: {args}")
 
             with patch("explainer_studio.engine.studio_home", return_value=studio_home), patch(
@@ -76,6 +88,43 @@ class AiveeRuntimeTest(unittest.TestCase):
         self.assertEqual(install_call.kwargs["cwd"], runtime)
         self.assertEqual(install_manifest["dependencies"]["aivee"], AIVEE_VERSION)
         self.assertEqual(install_manifest["overrides"]["hyperframes"]["undici"], UNDICI_VERSION)
+
+    def test_skips_broken_global_cli_and_uses_healthy_managed_cli(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "studio"
+            global_root = Path(temporary) / "global" / "node_modules"
+            runtime_root = home / "runtime" / "node_modules"
+            for package_root in (global_root / "aivee", runtime_root / "aivee"):
+                (package_root / "src").mkdir(parents=True)
+                (package_root / "src" / "cli.mjs").write_text("", encoding="utf-8")
+                (package_root / "package.json").write_text(json.dumps({
+                    "name": "aivee", "version": AIVEE_VERSION, "bin": {"aivee": "src/cli.mjs"},
+                }), encoding="utf-8")
+            runtime_root.parent.mkdir(parents=True, exist_ok=True)
+            (home / "runtime" / "package.json").write_text(json.dumps({
+                "dependencies": {"aivee": AIVEE_VERSION},
+                "overrides": {"hyperframes": {"undici": UNDICI_VERSION}},
+            }), encoding="utf-8")
+
+            def run(args, **_):
+                if args[1:] == ["--version"]:
+                    return CompletedProcess(args, 0, "v22.22.2\n", "")
+                if args[1:] == ["root", "-g"]:
+                    return CompletedProcess(args, 0, f"{global_root}\n", "")
+                if args[-1] == "capabilities":
+                    healthy = str(runtime_root / "aivee") in args[1]
+                    return CompletedProcess(args, 0, json.dumps({
+                        "render": {"requirementsAvailable": healthy, "outputs": {"mp4": {"defaultCodecAvailable": healthy}}},
+                    }), "")
+                self.fail(f"unexpected command: {args}")
+
+            with patch("explainer_studio.engine.studio_home", return_value=home), patch(
+                "explainer_studio.engine.shutil.which", side_effect=lambda name: f"{name}.exe",
+            ), patch("explainer_studio.engine.subprocess.run", side_effect=run):
+                command, package_root = ensure_aivee()
+
+        self.assertEqual(command[1], str(runtime_root / "aivee" / "src" / "cli.mjs"))
+        self.assertEqual(package_root, str(runtime_root / "aivee"))
 
 
 if __name__ == "__main__":

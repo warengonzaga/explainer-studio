@@ -15,6 +15,14 @@ POSES = {"idle", "present", "point", "celebrate"}
 MOUTHS = {"rest", "closed", "small", "open", "wide"}
 
 
+def avatar_box(size: tuple[int, int]) -> tuple[int, int, int, int]:
+    w, h = size
+    if h > w:
+        scale = min(w / 1080, h / 1920)
+        return round(32 * scale), round(1120 * scale), round(475 * scale), round(500 * scale)
+    return round(w * .025), round(h * .29), round(w * .31), round(h * .58)
+
+
 def _hex(value: str, fallback: str) -> str:
     return value if isinstance(value, str) and len(value) == 7 and value.startswith("#") else fallback
 

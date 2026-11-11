@@ -1,5 +1,9 @@
 {
   "name": "explainer-studio",
   "version": "0.1.0",
-  "description": "Create narrated explainer videos from chat."
+  "description": "Create narrated explainer videos from chat.",
+  "author": {
+    "name": "Waren Gonzaga",
+    "url": "https://github.com/warengonzaga"
+  }
 }
