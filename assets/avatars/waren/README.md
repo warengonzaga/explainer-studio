@@ -1,0 +1,9 @@
+# Waren avatar
+
+An original sample presenter based on Waren Gonzaga's supplied avatar images. The four poses and five mouth states were generated as transparent sprite sheets, then cropped into individual PNGs for Explainer Studio.
+
+Use this pack with `avatar-preview-pack` or choose **Waren (sample)** during setup. The transparent source sheets are kept in `source/`. The character uses neutral, even lighting and audio-reactive mouth states.
+
+The `point` pose keeps Waren's head front-facing while shifting both pupils toward his pointing hand. All poses use the same mouth height (`y=0.31`), keeping the same gap below the glasses; the point pose uses `x=0.42` to center on its face, while the others use `x=0.5`. Point, present, and celebrate mouth patches are scaled to 85%. Each pose has a matching closed-eye frame for automatic blinks. The contact sheet is rendered through the same avatar compositor used in explainer videos.
+
+This avatar is licensed under the repository MIT License.

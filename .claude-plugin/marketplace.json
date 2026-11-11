@@ -1,0 +1,14 @@
+{
+  "name": "explainer-studio",
+  "metadata": {
+    "description": "Chat-guided explainer production plugin for Codex and Claude Code."
+  },
+  "owner": {"name": "Explainer Studio"},
+  "plugins": [
+    {
+      "name": "explainer-studio",
+      "source": "./",
+      "description": "Create narrated explainer videos from chat"
+    }
+  ]
+}

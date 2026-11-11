@@ -1,0 +1,50 @@
+{
+  "name": "Waren",
+  "poses": {
+    "idle": "idle.png",
+    "present": "present.png",
+    "point": "point-gaze.png",
+    "celebrate": "celebrate.png"
+  },
+  "blinks": {
+    "idle": "idle-blink.png",
+    "present": "present-blink.png",
+    "point": "point-gaze-blink.png",
+    "celebrate": "celebrate-blink.png"
+  },
+  "mouth_anchor": [
+    0.5,
+    0.31
+  ],
+  "mouth_width": 0.13,
+  "mouth_fit": {
+    "point": {
+      "anchor": [
+        0.42,
+        0.31
+      ],
+      "scale": 0.85
+    },
+    "present": {
+      "anchor": [
+        0.5,
+        0.31
+      ],
+      "scale": 0.85
+    },
+    "celebrate": {
+      "anchor": [
+        0.5,
+        0.31
+      ],
+      "scale": 0.85
+    }
+  },
+  "mouths": {
+    "rest": "mouth-rest.png",
+    "closed": "mouth-closed.png",
+    "small": "mouth-small.png",
+    "open": "mouth-open.png",
+    "wide": "mouth-wide.png"
+  }
+}

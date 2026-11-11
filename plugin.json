@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "explainer-studio",
+  "version": "0.1.0",
+  "description": "Create narrated explainer videos with a chat-guided workflow, original avatars, and the AI Video Editing Engine.",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md",
+      "interface": {
+        "displayName": "Explainer Studio",
+        "shortDescription": "Create narrated explainer videos in chat",
+        "category": "Entertainment",
+        "capabilities": ["Instructions"],
+        "defaultPrompt": [
+          "Set up Explainer Studio on this machine.",
+          "Make an explainer video about my topic."
+        ]
+      }
+    }
+  }
+}
