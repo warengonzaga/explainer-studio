@@ -13,31 +13,42 @@
     "celebrate": "celebrate-blink.png"
   },
   "mouth_anchor": [
-    0.5,
-    0.31
+    0.464286,
+    0.354839
   ],
-  "mouth_width": 0.13,
+  "mouth_width": 0.130952,
   "mouth_fit": {
-    "point": {
+    "idle": {
       "anchor": [
-        0.42,
-        0.31
+        0.464286,
+        0.354839
       ],
-      "scale": 0.85
+      "width": 0.130952,
+      "scale": 1
     },
     "present": {
       "anchor": [
-        0.5,
-        0.31
+        0.465476,
+        0.355645
       ],
-      "scale": 0.85
+      "width": 0.130952,
+      "scale": 1
+    },
+    "point": {
+      "anchor": [
+        0.463095,
+        0.354839
+      ],
+      "width": 0.130952,
+      "scale": 1
     },
     "celebrate": {
       "anchor": [
-        0.5,
-        0.31
+        0.466667,
+        0.355645
       ],
-      "scale": 0.85
+      "width": 0.130952,
+      "scale": 1
     }
   },
   "mouths": {
