@@ -1,8 +1,7 @@
-"""Original geometric presenter and optional user-owned sprite packs."""
+"""Bundled and user-owned presenter sprite packs."""
 
 from __future__ import annotations
 
-import math
 import shutil
 from pathlib import Path
 
@@ -23,12 +22,12 @@ def avatar_box(size: tuple[int, int]) -> tuple[int, int, int, int]:
     return round(w * .025), round(h * .29), round(w * .31), round(h * .58)
 
 
-def _hex(value: str, fallback: str) -> str:
-    return value if isinstance(value, str) and len(value) == 7 and value.startswith("#") else fallback
-
-
 def _is_blinking(t: float) -> bool:
     return t % 4.7 < .11
+
+
+def _hex(value: str, fallback: str) -> str:
+    return value if isinstance(value, str) and len(value) == 7 and value.startswith("#") else fallback
 
 
 def _mouth(draw: ImageDraw.ImageDraw, x: float, y: float, size: float, state: str, ink: str) -> None:
@@ -43,46 +42,8 @@ def _mouth(draw: ImageDraw.ImageDraw, x: float, y: float, size: float, state: st
         draw.rounded_rectangle((x - w * .48, y - w * .22, x + w * .48, y + w * .3), radius=w * .15, fill=ink)
 
 
-def _default_avatar(canvas: Image.Image, box: tuple[int, int, int, int], pose: str, mouth: str, t: float, colors: dict) -> None:
-    x, y, w, h = box
-    draw = ImageDraw.Draw(canvas)
-    ink = _hex(colors.get("ink"), "#12223B")
-    accent = _hex(colors.get("accent"), "#377DFF")
-    skin = _hex(colors.get("skin"), "#E8B98F")
-    cx = x + w * .5
-    bob = math.sin(t * 4.4) * h * .006 if mouth not in {"rest", "closed"} else 0
-    head_y = y + h * .30 + bob
-    torso_top = y + h * .48 + bob
-    draw.rounded_rectangle((x + w * .23, torso_top, x + w * .77, y + h * .98), radius=w * .13, fill=accent)
-    stroke = max(4, round(w * .09))
-    if pose == "point":
-        left = [(x + w * .26, y + h * .59), (x + w * .11, y + h * .78)]
-        right = [(x + w * .75, y + h * .58), (x + w * .95, y + h * .35)]
-    elif pose == "present":
-        left = [(x + w * .25, y + h * .59), (x + w * .08, y + h * .49)]
-        right = [(x + w * .75, y + h * .59), (x + w * .93, y + h * .47)]
-    elif pose == "celebrate":
-        left = [(x + w * .26, y + h * .59), (x + w * .13, y + h * .27)]
-        right = [(x + w * .74, y + h * .59), (x + w * .87, y + h * .27)]
-    else:
-        left = [(x + w * .25, y + h * .6), (x + w * .13, y + h * .82)]
-        right = [(x + w * .75, y + h * .6), (x + w * .87, y + h * .82)]
-    for arm in (left, right):
-        draw.line(arm, fill=accent, width=stroke, joint="curve")
-        ex, ey = arm[-1]
-        r = stroke * .55
-        draw.ellipse((ex - r, ey - r, ex + r, ey + r), fill=skin)
-    hr = w * .215
-    draw.ellipse((cx - hr, head_y - hr, cx + hr, head_y + hr), fill=skin)
-    eye_y = head_y - hr * .17
-    if _is_blinking(t):
-        for ex in (cx - hr * .38, cx + hr * .38):
-            draw.line((ex - hr * .12, eye_y, ex + hr * .12, eye_y), fill=ink, width=max(2, round(w * .015)))
-    else:
-        er = max(2, round(w * .017))
-        for ex in (cx - hr * .38, cx + hr * .38):
-            draw.ellipse((ex - er, eye_y - er, ex + er, eye_y + er), fill=ink)
-    _mouth(draw, cx, head_y + hr * .42, w * .13, mouth, ink)
+def _bundled_default_pack() -> Path:
+    return Path(__file__).resolve().parents[2] / "assets" / "avatars" / "emo"
 
 
 def validate_pack(root: Path, pack_relative: str) -> dict:
@@ -180,11 +141,12 @@ def draw_avatar(canvas: Image.Image, root: Path, project: dict, pose: str, mouth
     if mouth not in MOUTHS:
         mouth = "rest"
     pack_relative = project.get("avatar_pack")
-    if not pack_relative:
-        _default_avatar(canvas, box, pose, mouth, t, project.get("colors", {}))
-        return
-    manifest = validate_pack(root, pack_relative)
-    pack = project_file(root, pack_relative)
+    if pack_relative:
+        manifest = validate_pack(root, pack_relative)
+        pack = project_file(root, pack_relative)
+    else:
+        pack = _bundled_default_pack()
+        manifest = validate_pack(pack.parent, pack.name)
     blink_file = manifest.get("blinks", {}).get(pose)
     if blink_file and _is_blinking(t):
         pose_path = pack / blink_file

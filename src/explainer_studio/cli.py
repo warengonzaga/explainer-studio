@@ -141,10 +141,14 @@ def setup(args) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         if source != destination:
             shutil.copy2(source, destination)
-    avatar = args.avatar or old.get("avatar") or "built-in"
+    plugin_root = Path(__file__).resolve().parents[2]
+    avatar = args.avatar or old.get("avatar") or "emo"
+    if avatar == "built-in":
+        avatar = "emo"
     avatar_pack = old.get("avatar_pack")
-    avatar_name = old.get("avatar_name", "Built-in")
+    avatar_name = old.get("avatar_name", "Emo")
     avatar_backup = None
+    avatar_installed = False
     avatar_destination = studio_home() / "assets" / "avatar"
     if args.avatar_pack:
         from .avatar import validate_pack
@@ -155,9 +159,16 @@ def setup(args) -> None:
             avatar_backup = _replace_avatar_pack(source, avatar_destination)
         avatar, avatar_pack = "custom", "assets/avatar"
         avatar_name = manifest.get("name", "Custom")
-    elif args.avatar == "built-in":
-        avatar_pack = None
-        avatar_name = "Built-in"
+    elif avatar == "emo":
+        from .avatar import copy_pack, validate_pack
+
+        avatar_destination = studio_home() / "assets" / "emo"
+        if avatar_destination.exists():
+            validate_pack(avatar_destination.parent, avatar_destination.name)
+        else:
+            copy_pack(plugin_root / "assets" / "avatars" / "emo", avatar_destination)
+            avatar_installed = True
+        avatar_pack, avatar_name = "assets/emo", "Emo"
     if avatar == "custom" and not avatar_pack:
         raise ProjectError("custom avatar requires --avatar-pack")
     profile = {
@@ -175,6 +186,8 @@ def setup(args) -> None:
     except Exception:
         if args.avatar_pack and source != avatar_destination.resolve():
             _rollback_avatar_pack(avatar_destination, avatar_backup)
+        elif avatar_installed and avatar_destination.exists():
+            shutil.rmtree(avatar_destination)
         raise
     finally:
         staged_profile.unlink(missing_ok=True)
@@ -562,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--language")
     p.add_argument("--voice-route", choices=["recording", "elevenlabs"])
     p.add_argument("--voice-id")
-    p.add_argument("--avatar", choices=["built-in", "custom"])
+    p.add_argument("--avatar", choices=["emo", "built-in", "custom"])
     p.add_argument("--avatar-pack")
     p.add_argument("--rhubarb-path")
     p.add_argument("--output-dir")
