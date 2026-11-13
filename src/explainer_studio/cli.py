@@ -83,6 +83,14 @@ def avatar_preview_pack_command(args) -> None:
     print(preview_pack(Path(args.pack).resolve(), Path(args.output).resolve()))
 
 
+def avatar_validate_command(args) -> None:
+    from .avatar import validate_pack
+
+    pack = Path(args.pack).expanduser().resolve()
+    manifest = validate_pack(pack.parent, pack.name)
+    print(f"valid avatar pack: {manifest['name']} ({manifest['id']}@{manifest['version']})")
+
+
 def contact_sheet_command(args) -> None:
     from .quality import contact_sheet
 
@@ -160,15 +168,7 @@ def setup(args) -> None:
         avatar, avatar_pack = "custom", "assets/avatar"
         avatar_name = manifest.get("name", "Custom")
     elif avatar == "emo":
-        from .avatar import copy_pack, validate_pack
-
-        avatar_destination = studio_home() / "assets" / "emo"
-        if avatar_destination.exists():
-            validate_pack(avatar_destination.parent, avatar_destination.name)
-        else:
-            copy_pack(plugin_root / "assets" / "avatars" / "emo", avatar_destination)
-            avatar_installed = True
-        avatar_pack, avatar_name = "assets/emo", "Emo"
+        avatar_pack, avatar_name = None, "Emo"
     if avatar == "custom" and not avatar_pack:
         raise ProjectError("custom avatar requires --avatar-pack")
     profile = {
@@ -618,6 +618,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("pack")
     p.add_argument("--output", required=True)
     p.set_defaults(handler=avatar_preview_pack_command)
+    p = sub.add_parser("avatar-validate", help="validate a standardized avatar pack folder")
+    p.add_argument("pack")
+    p.set_defaults(handler=avatar_validate_command)
     p = sub.add_parser("synthesize", help="generate narration with configured ElevenLabs voice")
     p.add_argument("project")
     p.set_defaults(handler=synthesize)
