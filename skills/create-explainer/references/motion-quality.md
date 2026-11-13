@@ -10,6 +10,13 @@ The creator approved the open-source Reel v6 presentation as Studio's visual qua
 - Highlight the currently spoken word subtly within the bubble when supported. Do not let word emphasis resize text into collisions or make the bubble jump.
 - Let the user replace the avatar, art direction, colors, or caption treatment. Defaults should make a topic-to-storyboard start easy without constraining the approved storyboard.
 
+## Reels framing
+
+- For 1080 × 1920 Reels, keep essential content inside x=100–886 px and y=250–1480 px. Leave the bottom 440 px and top 250 px clear for interface overlays; keep extra clearance on the right for the action rail. These are conservative Studio authoring bounds and should be checked against the target platform preview.
+- Put a short, large hook near the top of the safe area when it helps the story. Use a bold condensed display style as a starting point, not a mandatory font or a repeated title card.
+- If the scene uses lower captions instead of the default avatar speech bubble, use short 1–3 word bursts with white text and a restrained yellow keyword highlight. Keep them above the bottom danger zone and away from the avatar's face and explanatory graphic.
+- Let the presenter extend into reserved overlay space when needed for framing, but keep the face and other essential details visible. Reels controls must not cover the important subject, text, or action.
+
 ## Model recommendations
 
 | Environment | Recommended for best results | Minimum recommended |

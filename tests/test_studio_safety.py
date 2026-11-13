@@ -60,7 +60,11 @@ class StudioSafetyTest(unittest.TestCase):
                 _visual_layers(root, {"asset": "diagram.png"}, (10, 10), base)
 
     def test_caption_and_visual_bounds_follow_reels_safe_area(self):
-        _check_reels_box(0.067, 0.13, 0.753, 0.74, "test")
+        _check_reels_box(0.093, 0.13, 0.727, 0.641, "test")
+        with self.assertRaises(ProjectError):
+            _check_reels_box(0.092, 0.2, 0.1, 0.1, "left edge")
+        with self.assertRaises(ProjectError):
+            _check_reels_box(0.2, 0.77, 0.1, 0.01, "bottom edge")
         with self.assertRaises(ProjectError):
             _check_reels_box(0.36, 0.4, 0.58, 0.1, "caption")
 
