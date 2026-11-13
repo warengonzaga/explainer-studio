@@ -5,7 +5,7 @@ description: Create or inspect standardized layered avatar packs, validate their
 
 # Avatar packs
 
-Explainer Studio's default presenter is the original **Emo** robot pack at `assets/avatars/emo`. The repo also includes **Waren** as an optional sample pack at `assets/avatars/waren`, based on the creator's supplied avatar references. Users can install other packs they own or have permission to use. If an image generation tool is available, create original transparent sprites in chat and show them to the user. Otherwise request the source images as attachments. Do not use the Talking Explainer demo character or its artwork.
+Explainer Studio's default presenter is the original **Emo** robot pack at `assets/avatars/emo`. The repo also includes **Waren** as an optional sample pack at `assets/avatars/waren`, based on the creator's supplied avatar references. Users can install other packs they own or have permission to use. If an image generation tool is available, create original transparent sprites in chat and show them to the user. Otherwise request the source images as attachments. Keep generated artwork original or use assets the user is authorized to provide; do not reproduce characters or artwork from other projects.
 
 Prepare every user supplied pack using the strict v1 sprite-sheet format in [pack.md](references/pack.md). Each pack includes talking, pointing, and emotion pose sheets, matching talking and emotion eye/mouth sheets, a manifest, README, license or terms, and preview. The bundled legacy assets are not examples of the new user-pack format and must not be rewritten as part of this workflow.
 

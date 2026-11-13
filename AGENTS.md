@@ -1,7 +1,7 @@
 # Explainer Studio agent notes
 
 - Keep the product usable from Codex and Claude Code chat. Explainer Studio is an agent plugin for Codex and Claude Code. It owns explainer workflow, guidance, and original avatar assets; AIVEE is its required generic editor and sole composition/rendering engine. Keep deterministic preparation (timing, avatar sprites, project setup) local to Studio and route video composition through the AIVEE CLI.
-- Keep implementation and assets original. The Talking Explainer repository is workflow inspiration only; do not copy its scripts, artwork, fonts, templates, or example film.
+- Keep implementation and assets original. Do not copy scripts, artwork, fonts, templates, or example films from other projects.
 - Do not write credentials to project files, the creator profile, logs, or command arguments. `ELEVENLABS_API_KEY` is read from the environment only when selected.
 - Preserve source narration and existing renders. New takes go into a new project; commands must refuse to overwrite user output.
 - Treat the narration as the timing source. Script and storyboard review gates must be visible in chat before a final render.
