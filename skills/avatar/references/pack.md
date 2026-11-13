@@ -1,33 +1,19 @@
-# Avatar pack
+# Avatar pack format
 
-Place transparent PNG pose files and `manifest.json` in one directory. The head, feet, and mouth location should remain consistent between poses. Each image is fitted inside the presenter's scene box, anchored at the bottom.
+Create user supplied packs as folders using the strict v1 format documented in [`docs/avatar-pack-format.md`](../../../docs/avatar-pack-format.md), with the normative [manifest schema](../../../docs/avatar-pack.schema.json). Do not convert or edit the bundled Waren or Emo packs as part of this workflow.
 
-Optional `name` metadata identifies a pack in the creator profile. The bundled Waren example uses this field.
+Every v1 pack contains `README.md`, `manifest.json`, a `LICENSE` or `TERMS.md`, `preview.png`, and seven transparent PNG sheets:
 
-```json
-{
-  "poses": {
-    "idle": "idle.png",
-    "present": "present.png",
-    "point": "point.png",
-    "celebrate": "celebrate.png"
-  },
-  "blinks": {
-    "idle": "idle-blink.png"
-  },
-  "mouth_anchor": [0.5, 0.34],
-  "mouth_width": 0.13,
-  "mouth_fit": {
-    "point": {"anchor": [0.5, 0.31], "width": 0.13, "scale": 0.85},
-    "present": {"anchor": [0.5, 0.31], "width": 0.13, "scale": 0.85}
-  },
-  "mouths": {
-    "closed": "mouth-closed.png",
-    "small": "mouth-small.png",
-    "open": "mouth-open.png",
-    "wide": "mouth-wide.png"
-  }
-}
+```text
+poses/talking.png   poses/pointing.png   poses/emotion.png
+eyes/talking.png    eyes/emotion.png
+mouth/talking.png  mouth/emotion.png
 ```
 
-`mouth_anchor` is `[x, y]` measured from the top-left of the visible fitted sprite, each value from 0 to 1. `mouth_width` is the fraction of sprite width used for a patch. Use optional `mouth_fit.<pose>.anchor`, `width`, and `scale` to tune a pose; pose-specific `mouths` can override individual patch files when the face angle or proportions change. This follows the reference workflow's per-pose fitting: review each pose/mouth combination, then tune only the poses that need it. A scale around `0.85` can soften open shapes that look too large. Optional `blinks` map pose names to full-pose closed-eye PNGs; preserve the original image size and framing so the blink does not jump. During rendering, supplied blink sprites display for a brief moment on a regular cycle, and the contact sheet adds a blink preview when any blink assets are present. Mouth images are optional; if absent, the engine draws simple mouth shapes on the avatar. For clean results, supply pose artwork with a neutral face and transparent mouth patches. The rendered lips follow the voice's loudness, not phonemes.
+The manifest declares pack identity, license, sheet paths, named pixel rectangles for every frame, and eyes/mouth destination rectangles within each pose frame. Use the exact required frame names and keep all pose cells the same size and baseline. Pose artwork contains the complete body and head without eyes or mouth. Eye sprites contain both eyes. Emotional frame names must match across pose, eye, and mouth sheets. Follow the no-lips, clean-mouth appearance when that is part of the avatar design.
+
+Before a pack is selected, create a review image with `explainer avatar-preview-pack <pack-folder> --output <pack-folder>/preview.png` and inspect it for alignment, style consistency, and missing or baked-in facial details. Then validate it with `explainer avatar-validate <pack-folder>`. Attach only a pack that passes validation. Legacy packs are rejected with a format error; never rewrite a user's pack in place.
+
+The standard talking mouth frames are `rest`, `closed`, `small`, `open`, and `wide`. Emotion frames are `smile`, `grin`, `laugh`, `sad`, `worried`, `surprised`, and `angry`. Lip sync uses talking mouths during speech and the selected emotion mouth during pauses. Eye blinking changes only the eye layer. Pointing poses select the matching gaze automatically, and `viewer` points toward the audience with open forward-facing eyes.
+
+Use the manifest example in [`docs/avatar-pack-format.md`](../../../docs/avatar-pack-format.md) as a starting point. Explain license and commercial terms in the pack's README and declared license file. Structural validation does not certify visual quality or ownership rights.

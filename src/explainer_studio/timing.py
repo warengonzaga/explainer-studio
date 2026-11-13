@@ -134,7 +134,7 @@ def build_storyboard(root: Path) -> dict:
         scenes.append({
             "start": boundaries[index], "end": boundaries[index + 1],
             "headline": headline, "body": paragraph,
-            "pose": ["idle", "present", "point", "celebrate"][index % 4],
+            "pose": ["idle", "present", "point_right", "celebrate"][index % 4],
             "emphasis": paragraph.split()[0].strip(".,;:!?—-"),
             "emphasis_at": round(float(words[positions[index][0]]["start"]), 3),
             "asset": None,
@@ -155,6 +155,9 @@ def validate_storyboard(root: Path, board: dict, duration: float | None = None) 
     if not isinstance(board, dict) or board.get("version") != 1 or not isinstance(board.get("scenes"), list) or not board["scenes"]:
         raise ProjectError("storyboard.json needs version 1 and a nonempty scenes array")
     project = read_json(root / "project.json")
+    from .avatar import pose_supported, validate_pack
+
+    avatar_manifest = validate_pack(root, project["avatar_pack"]) if project.get("avatar_pack") else None
     voice = project_file(root, project["voice"])
     if duration is None:
         duration = probe_duration(voice)
@@ -167,6 +170,9 @@ def validate_storyboard(root: Path, board: dict, duration: float | None = None) 
         raise ProjectError("word timings changed; review and approve this storyboard again")
     previous = 0.0
     for index, scene in enumerate(board["scenes"]):
+        pose = scene.get("pose", "idle")
+        if not isinstance(pose, str) or (avatar_manifest and not pose_supported(avatar_manifest, pose)):
+            raise ProjectError(f"scene {index + 1} has an unsupported avatar pose: {pose}")
         try:
             start, end = float(scene["start"]), float(scene["end"])
         except (KeyError, TypeError, ValueError) as exc:

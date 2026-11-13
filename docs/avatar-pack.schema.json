@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/warengonzaga/explainer-studio/blob/dev/docs/avatar-pack.schema.json",
+  "title": "Explainer Studio Avatar Pack Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "id", "name", "version", "creator", "license", "license_file", "sheets", "face"],
+  "properties": {
+    "format_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "name": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"},
+    "creator": {"type": "string", "minLength": 1},
+    "license": {"type": "string", "minLength": 1},
+    "license_file": {"enum": ["LICENSE", "TERMS.md"]},
+    "sheets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["poses", "eyes", "mouth"],
+      "properties": {
+        "poses": {"$ref": "#/$defs/sheetGroups/poses"},
+        "eyes": {"$ref": "#/$defs/sheetGroups/eyes"},
+        "mouth": {"$ref": "#/$defs/sheetGroups/mouth"}
+      }
+    },
+    "face": {
+      "type": "object", "additionalProperties": false,
+      "required": ["eyes", "mouth"],
+      "properties": {"eyes": {"$ref": "#/$defs/rect"}, "mouth": {"$ref": "#/$defs/rect"}}
+    }
+  },
+  "$defs": {
+    "rect": {"type": "array", "prefixItems": [{"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 1}, {"type": "integer", "minimum": 1}], "minItems": 4, "maxItems": 4},
+    "sheet": {"type": "object", "additionalProperties": false, "required": ["path", "frames"], "properties": {"path": {"type": "string", "minLength": 1}, "frames": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/rect"}}}},
+    "sheetGroups": {
+      "poses": {"type": "object", "additionalProperties": false, "required": ["talking", "pointing", "emotion"], "properties": {"talking": {"$ref": "#/$defs/sheet"}, "pointing": {"$ref": "#/$defs/sheet"}, "emotion": {"$ref": "#/$defs/sheet"}}},
+      "eyes": {"type": "object", "additionalProperties": false, "required": ["talking", "emotion"], "properties": {"talking": {"$ref": "#/$defs/sheet"}, "emotion": {"$ref": "#/$defs/sheet"}}},
+      "mouth": {"type": "object", "additionalProperties": false, "required": ["talking", "emotion"], "properties": {"talking": {"$ref": "#/$defs/sheet"}, "emotion": {"$ref": "#/$defs/sheet"}}}
+    }
+  }
+}
