@@ -2,6 +2,10 @@
 
 Waren is a bundled sample avatar pack for Explainer Studio. It follows the v1 avatar pack format, with full-body pose sheets and separate eye and mouth sprite sheets.
 
+Waren uses smooth 2D chibi artwork with balanced body proportions, a plain black outfit, and clear glasses. Facial sprites stay inside the glasses and below them across every pose.
+
+[View the composed pack preview](preview.png).
+
 ## Contents
 
 - `poses/talking.png`: idle, present, like, thinking, idea, and celebrate.
