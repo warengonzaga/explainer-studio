@@ -109,12 +109,15 @@ def _validate_v1(pack: Path, manifest: dict, *, draft: bool = False) -> dict:
                     width, height = image.size
                     if image.format != "PNG" or image.mode not in {"RGBA", "LA"}:
                         raise ProjectError(f"avatar sheet must be a transparent PNG: {relative}")
+                    alpha = image.getchannel("A")
                     for name, rect in frames.items():
                         if (not isinstance(rect, list) or len(rect) != 4 or
                                 any(type(value) is not int for value in rect) or
                                 rect[0] < 0 or rect[1] < 0 or rect[2] <= 0 or rect[3] <= 0 or
                                 rect[0] + rect[2] > width or rect[1] + rect[3] > height):
                             raise ProjectError(f"invalid frame bounds: sheets.{group}.{category}.{name}")
+                        if alpha.crop((rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3])).getextrema()[0] != 0:
+                            raise ProjectError(f"avatar frame must contain transparent pixels: sheets.{group}.{category}.{name}")
                     references.append((relative, frames))
             except OSError as exc:
                 raise ProjectError(f"invalid avatar PNG: {relative}") from exc
@@ -325,9 +328,12 @@ def _draw_v1_avatar(canvas: Image.Image, pack: Path, manifest: dict, pose: str, 
     else:
         category, frame, gaze, expression = "talking", pose, "open", None
     sheet_set = manifest["sheets"]
+    blinking = _is_blinking(t)
+    eye_category = "talking" if blinking or not expression else "emotion"
+    eye_frame = "closed" if blinking else expression or gaze
     entries = [
         (sheet_set["poses"][category], frame, None),
-        (sheet_set["eyes"]["emotion" if expression else "talking"], expression or ("closed" if _is_blinking(t) else gaze), manifest["face"]["eyes"]),
+        (sheet_set["eyes"][eye_category], eye_frame, manifest["face"]["eyes"]),
     ]
     mouth_category = "emotion" if expression and mouth == "rest" else "talking"
     mouth_frame = expression if mouth_category == "emotion" else (mouth if mouth in FORMAT_V1["mouth"]["talking"] else "rest")
