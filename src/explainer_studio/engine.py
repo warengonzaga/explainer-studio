@@ -264,7 +264,7 @@ def _visual_layers(root: Path, cue: dict, frame_size: tuple[int, int], asset_dir
 
 
 def _check_reels_box(x: float, y: float, width: float, height: float, label: str) -> None:
-    if x < 0.067 - 1e-6 or y < 0.13 - 1e-6 or x + width > 0.82 + 1e-6 or y + height > 0.87 + 1e-6:
+    if x < 0.093 - 1e-6 or y < 0.13 - 1e-6 or x + width > 0.82 + 1e-6 or y + height > 0.771 + 1e-6:
         raise ProjectError(f"Reels {label} is outside the safe area; reposition it before rendering")
 
 
@@ -408,7 +408,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         brand_clip = {
             "id": "studio-brand", "timelineStart": 0, "durationSeconds": duration,
             "text": project.get("brand", "Explainer Studio"),
-            "x": 0.08 if is_portrait else 0.025, "y": 0.135 if is_portrait else 0.03,
+            "x": 0.1 if is_portrait else 0.025, "y": 0.135 if is_portrait else 0.03,
             "width": 0.28 if is_portrait else 0.24, "height": 0.04,
             "fontSize": max(8, round(24 * type_scale)), "fontWeight": 700,
             "color": colors.get("ink", "#172236"), "backgroundColor": "transparent",
@@ -428,7 +428,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 "id": f"scene-heading-{index + 1:02d}", "timelineStart": float(scene["start"]),
                 "durationSeconds": float(scene["end"]) - float(scene["start"]),
                 "text": scene.get("visual_label") or scene["headline"],
-                "x": 0.08, "y": 0.16, "width": 0.72 if is_portrait else 0.82, "height": 0.08,
+                "x": 0.1 if is_portrait else 0.08, "y": 0.16, "width": 0.72 if is_portrait else 0.82, "height": 0.08,
                 "fontSize": max(8, round(54 * type_scale)), "fontWeight": 800, "color": colors.get("ink", "#172236"),
                 "backgroundColor": "transparent", "textAlign": "center", "verticalAlign": "center",
                 "keyframes": [
@@ -437,6 +437,9 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 ],
             } for index, scene in enumerate(scenes)],
         }
+        if portrait:
+            for heading in title_track["clips"]:
+                _check_reels_box(heading["x"], heading["y"], heading["width"], heading["height"], "scene heading")
         visual_clips = []
         for index, (visual_id, _, cue) in enumerate(visual_records):
             duration_seconds = float(cue["duration"])
