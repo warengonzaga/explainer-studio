@@ -2,7 +2,7 @@
 
 ## 🎬 Overview
 
-Explainer Studio is a local plugin for making narrated explainer videos from Codex or Claude Code chat. It guides you from topic and script through voice timing, storyboard review, preview, and MP4 delivery. Studio owns the explainer workflow and avatar assets; the generic [AI Video Editing Engine](https://github.com/warengonzaga/ai-video-editing-engine) owns final timeline composition and rendering. The implementation and bundled presenter are original; [Talking Explainer](https://github.com/brewed-ops/talking-explainer) informed the workflow.
+Explainer Studio is an agent plugin for creating narrated explainer videos from Codex or Claude Code. It guides the work from topic and script through narration timing, storyboard review, preview, and MP4 delivery. Studio owns the explainer workflow and original avatar assets. It depends on [AIVEE](https://github.com/warengonzaga/ai-video-editing-engine) for editable timeline composition and video rendering.
 
 ## ✨ Features
 
@@ -30,13 +30,13 @@ The visual quality baseline is a deliberately composed scene with readable artwo
 
 ## 🚀 Quick start
 
-Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. When running from a source checkout, bootstrap Studio's managed Python environment:
+Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. Node.js and npm are needed for Studio to manage its required AIVEE dependency. When running from a source checkout, bootstrap Studio's managed Python environment:
 
 ```bash
 python scripts/explainer.py bootstrap
 ```
 
-For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps its Python dependencies, checks the machine, and installs the supported AIVEE npm package into the Studio user data directory when needed; users do not need to clone the Engine repository or install AIVEE separately. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, default colors, and `~/Explainer Studio` output. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, and installs the supported `aivee` npm package into Studio's user data directory when needed. AIVEE is required for composition and rendering, but users do not need to install it separately. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, default colors, and `~/Explainer Studio` output. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
 For a local checkout, add this repository as a plugin marketplace and install `explainer-studio`:
 

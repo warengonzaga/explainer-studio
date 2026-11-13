@@ -1,6 +1,6 @@
 # Avatar Pack Format
 
-Explainer Studio avatar packs use `format_version: 1`. A pack is a folder containing `README.md`, `manifest.json`, `LICENSE` or `TERMS.md`, `preview.png`, and these seven transparent PNG sprite sheets:
+Explainer Studio avatar packs use `format_version: 1`. A pack is a folder containing `README.md`, `manifest.json`, `LICENSE` or `TERMS.md`, `preview.png`, and these seven transparent PNG sprite sheets. Every declared frame must include transparent pixels (alpha 0); an alpha channel alone does not make an opaque frame valid.
 
 ```text
 poses/talking.png
@@ -58,7 +58,7 @@ Minimal manifest shape (frame rectangles are examples; replace them with the act
 }
 ```
 
-During speech, Studio uses talking mouth frames for lip sync. During pauses in an emotion pose, it uses the matching emotion mouth. Blinks replace only the eye layer with `closed`.
+During speech, Studio uses talking mouth frames for lip sync. During pauses in an emotion pose, it uses the matching emotion mouth. Blinks replace only the eye layer with `closed`, including during an emotion pose; the blink uses `eyes/talking.closed` because emotion eye sheets do not have a closed frame.
 
 `README.md` explains the pack, its variants, credits, compatibility and use. `LICENSE` or `TERMS.md` states the rights granted by the creator. `preview.png` shows the pack variants together. Structural validation cannot judge visual quality, alignment, or whether facial details were baked into a pose; inspect the generated preview before publishing a pack.
 
