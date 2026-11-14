@@ -60,7 +60,7 @@ def _mouth(draw: ImageDraw.ImageDraw, x: float, y: float, size: float, state: st
 
 
 def _bundled_default_pack() -> Path:
-    return Path(__file__).resolve().parents[2] / "assets" / "avatars" / "emo"
+    return Path(__file__).resolve().parents[2] / "library" / "avatars" / "emo"
 
 
 def _validate_v1(pack: Path, manifest: dict, *, draft: bool = False) -> dict:
