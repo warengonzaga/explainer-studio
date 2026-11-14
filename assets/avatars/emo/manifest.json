@@ -1,27 +1,348 @@
 {
+  "format_version": 1,
+  "id": "emo",
   "name": "Emo",
-  "poses": {
-    "idle": "idle.png",
-    "present": "present.png",
-    "point": "point.png",
-    "celebrate": "celebrate.png"
+  "version": "1.0.0",
+  "creator": "Waren Gonzaga",
+  "license": "MIT",
+  "license_file": "LICENSE",
+  "sheets": {
+    "poses": {
+      "talking": {
+        "path": "poses/talking.png",
+        "frames": {
+          "idle": [
+            0,
+            0,
+            512,
+            512
+          ],
+          "present": [
+            512,
+            0,
+            512,
+            512
+          ],
+          "like": [
+            1024,
+            0,
+            512,
+            512
+          ],
+          "thinking": [
+            1536,
+            0,
+            512,
+            512
+          ],
+          "idea": [
+            0,
+            512,
+            512,
+            512
+          ],
+          "celebrate": [
+            512,
+            512,
+            512,
+            512
+          ]
+        }
+      },
+      "pointing": {
+        "path": "poses/pointing.png",
+        "frames": {
+          "top_left": [
+            0,
+            0,
+            512,
+            512
+          ],
+          "left": [
+            512,
+            0,
+            512,
+            512
+          ],
+          "bottom_left": [
+            1024,
+            0,
+            512,
+            512
+          ],
+          "top_right": [
+            1536,
+            0,
+            512,
+            512
+          ],
+          "right": [
+            0,
+            512,
+            512,
+            512
+          ],
+          "bottom_right": [
+            512,
+            512,
+            512,
+            512
+          ],
+          "viewer": [
+            1024,
+            512,
+            512,
+            512
+          ]
+        }
+      },
+      "emotion": {
+        "path": "poses/emotion.png",
+        "frames": {
+          "smile": [
+            0,
+            0,
+            512,
+            512
+          ],
+          "grin": [
+            512,
+            0,
+            512,
+            512
+          ],
+          "laugh": [
+            1024,
+            0,
+            512,
+            512
+          ],
+          "sad": [
+            1536,
+            0,
+            512,
+            512
+          ],
+          "worried": [
+            0,
+            512,
+            512,
+            512
+          ],
+          "surprised": [
+            512,
+            512,
+            512,
+            512
+          ],
+          "angry": [
+            1024,
+            512,
+            512,
+            512
+          ]
+        }
+      }
+    },
+    "eyes": {
+      "talking": {
+        "path": "eyes/talking.png",
+        "frames": {
+          "open": [
+            0,
+            0,
+            256,
+            128
+          ],
+          "closed": [
+            256,
+            0,
+            256,
+            128
+          ],
+          "top_left": [
+            512,
+            0,
+            256,
+            128
+          ],
+          "left": [
+            768,
+            0,
+            256,
+            128
+          ],
+          "bottom_left": [
+            0,
+            128,
+            256,
+            128
+          ],
+          "top_right": [
+            256,
+            128,
+            256,
+            128
+          ],
+          "right": [
+            512,
+            128,
+            256,
+            128
+          ],
+          "bottom_right": [
+            768,
+            128,
+            256,
+            128
+          ]
+        }
+      },
+      "emotion": {
+        "path": "eyes/emotion.png",
+        "frames": {
+          "smile": [
+            0,
+            0,
+            256,
+            128
+          ],
+          "grin": [
+            256,
+            0,
+            256,
+            128
+          ],
+          "laugh": [
+            512,
+            0,
+            256,
+            128
+          ],
+          "sad": [
+            768,
+            0,
+            256,
+            128
+          ],
+          "worried": [
+            0,
+            128,
+            256,
+            128
+          ],
+          "surprised": [
+            256,
+            128,
+            256,
+            128
+          ],
+          "angry": [
+            512,
+            128,
+            256,
+            128
+          ]
+        }
+      }
+    },
+    "mouth": {
+      "talking": {
+        "path": "mouth/talking.png",
+        "frames": {
+          "rest": [
+            0,
+            0,
+            192,
+            128
+          ],
+          "closed": [
+            192,
+            0,
+            192,
+            128
+          ],
+          "small": [
+            384,
+            0,
+            192,
+            128
+          ],
+          "open": [
+            576,
+            0,
+            192,
+            128
+          ],
+          "wide": [
+            0,
+            128,
+            192,
+            128
+          ]
+        }
+      },
+      "emotion": {
+        "path": "mouth/emotion.png",
+        "frames": {
+          "smile": [
+            0,
+            0,
+            192,
+            128
+          ],
+          "grin": [
+            192,
+            0,
+            192,
+            128
+          ],
+          "laugh": [
+            384,
+            0,
+            192,
+            128
+          ],
+          "sad": [
+            576,
+            0,
+            192,
+            128
+          ],
+          "worried": [
+            0,
+            128,
+            192,
+            128
+          ],
+          "surprised": [
+            192,
+            128,
+            192,
+            128
+          ],
+          "angry": [
+            384,
+            128,
+            192,
+            128
+          ]
+        }
+      }
+    }
   },
-  "blinks": {
-    "idle": "idle-blink.png",
-    "present": "present-blink.png",
-    "point": "point-blink.png",
-    "celebrate": "celebrate-blink.png"
-  },
-  "mouth_anchor": [
-    0.5,
-    0.39
-  ],
-  "mouth_width": 0.16,
-  "mouths": {
-    "rest": "mouth-rest.png",
-    "closed": "mouth-closed.png",
-    "small": "mouth-small.png",
-    "open": "mouth-open.png",
-    "wide": "mouth-wide.png"
+  "face": {
+    "eyes": [
+      177,
+      145,
+      160,
+      63
+    ],
+    "mouth": [
+      218,
+      221,
+      80,
+      42
+    ]
   }
 }
