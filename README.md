@@ -53,7 +53,7 @@ Claude Code also supports local development with `claude --plugin-dir <path-to-t
 
 Choose a recording you attach to chat or an ElevenLabs voice. For generated narration, set `ELEVENLABS_API_KEY` in the environment and provide a voice ID. No voice clone is required.
 
-Use the bundled **Emo** robot avatar by default, choose the **Waren** sample avatar, or install a sprite pack you own. Emo includes four poses, matching blink frames, and five screen-mouth states. Waren is based on the creator's supplied avatar references and includes four poses and five mouth states. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
+Use the bundled **Emo** robot avatar by default, choose the **Waren** sample avatar, or install a sprite pack you own. The free sample packs are in [`library/avatars`](library/avatars) and each includes an MIT license. Emo includes four poses, matching blink frames, and five screen-mouth states. Waren is based on the creator's supplied avatar references and includes four poses and five mouth states. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
 
 ## 🧭 Workflow
 
