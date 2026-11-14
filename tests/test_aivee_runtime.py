@@ -49,8 +49,9 @@ class AiveeRuntimeTest(unittest.TestCase):
             ):
                 command, package_root = ensure_aivee()
 
-        self.assertEqual(command, ["node.exe", str(package / "src" / "cli.mjs")])
-        self.assertEqual(package_root, str(package))
+        self.assertEqual(command[0], "node.exe")
+        self.assertEqual(os.path.normcase(command[1]), os.path.normcase(str(package / "src" / "cli.mjs")))
+        self.assertEqual(os.path.normcase(package_root), os.path.normcase(str(package)))
         self.assertEqual(run_mock.call_count, 3)
 
     def test_replaces_stale_global_package_with_published_version(self):
@@ -89,8 +90,9 @@ class AiveeRuntimeTest(unittest.TestCase):
             ), patch("explainer_studio.engine.subprocess.run", side_effect=run) as run_mock:
                 command, package_root = ensure_aivee()
 
-        self.assertEqual(command, ["node.exe", str(package / "src" / "cli.mjs")])
-        self.assertEqual(package_root, str(package))
+        self.assertEqual(command[0], "node.exe")
+        self.assertEqual(os.path.normcase(command[1]), os.path.normcase(str(package / "src" / "cli.mjs")))
+        self.assertEqual(os.path.normcase(package_root), os.path.normcase(str(package)))
         install_call = next(call for call in run_mock.call_args_list if "install" in call.args[0])
         install_args = install_call.args[0]
         runtime = studio_home / "runtime"
@@ -122,7 +124,7 @@ class AiveeRuntimeTest(unittest.TestCase):
                 if args[1:] == ["root", "-g"]:
                     return CompletedProcess(args, 0, f"{global_root}\n", "")
                 if args[-1] == "capabilities":
-                    healthy = str(runtime_root / "aivee") in args[1]
+                    healthy = os.path.normcase(str(runtime_root / "aivee")) in os.path.normcase(args[1])
                     return CompletedProcess(args, 0, json.dumps({
                         "render": {"requirementsAvailable": healthy, "outputs": {"mp4": {"defaultCodecAvailable": healthy}}},
                     }), "")
@@ -133,8 +135,8 @@ class AiveeRuntimeTest(unittest.TestCase):
             ), patch("explainer_studio.engine.subprocess.run", side_effect=run):
                 command, package_root = ensure_aivee()
 
-        self.assertEqual(command[1], str(runtime_root / "aivee" / "src" / "cli.mjs"))
-        self.assertEqual(package_root, str(runtime_root / "aivee"))
+        self.assertEqual(os.path.normcase(command[1]), os.path.normcase(str(runtime_root / "aivee" / "src" / "cli.mjs")))
+        self.assertEqual(os.path.normcase(package_root), os.path.normcase(str(runtime_root / "aivee")))
 
 
 if __name__ == "__main__":

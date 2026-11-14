@@ -12,11 +12,36 @@ sys.path.insert(0, str(ROOT / "src"))
 from PIL import Image, ImageDraw
 
 from explainer_studio.cli import _replace_avatar_pack
-from explainer_studio.common import ProjectError
+from explainer_studio.common import ProjectError, studio_data
 from explainer_studio.engine import _check_reels_box, _visual_layers
 
 
 class StudioSafetyTest(unittest.TestCase):
+    def test_studio_data_uses_aivee_namespace_and_keeps_legacy_root_fallback(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "project"
+            root.mkdir()
+            self.assertEqual(studio_data(root), root)
+            namespace = root / "studio-data" / "explainer"
+            namespace.mkdir(parents=True)
+            (root / "project.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(studio_data(root), root)
+            (namespace / "project.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(studio_data(root), namespace)
+
+    def test_studio_data_rejects_a_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root, outside = base / "project", base / "outside"
+            root.mkdir()
+            outside.mkdir()
+            try:
+                (root / "studio-data").symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+            with self.assertRaisesRegex(ProjectError, "must not be symlinks"):
+                studio_data(root)
+
     def test_transparent_layers_are_cropped_before_registering(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "project"
@@ -81,6 +106,25 @@ class StudioSafetyTest(unittest.TestCase):
                 with self.assertRaisesRegex(OSError, "copy failed"):
                     _replace_avatar_pack(source, target)
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "existing pack")
+
+    def test_failed_avatar_copy_leaves_no_partial_library_pack(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            target = root / "library" / "avatar"
+            target.parent.mkdir()
+
+            def fail_after_partial_copy(_source, stage):
+                stage.mkdir()
+                (stage / "partial.png").write_bytes(b"partial")
+                raise OSError("copy failed")
+
+            with patch("explainer_studio.avatar.copy_pack", side_effect=fail_after_partial_copy):
+                with self.assertRaisesRegex(OSError, "copy failed"):
+                    _replace_avatar_pack(source, target)
+            self.assertFalse(target.exists())
+            self.assertEqual(list(target.parent.glob("avatar.stage-*")), [])
 
 
 if __name__ == "__main__":

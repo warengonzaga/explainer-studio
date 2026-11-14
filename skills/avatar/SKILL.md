@@ -13,4 +13,4 @@ When creating a pack, follow [pack.md](references/pack.md) and the canonical [v1
 
 Run `explainer avatar-validate <pack-folder>` and attach only packs that pass. Use the supplied manifest schema for required frame names, then the CLI validator for asset paths, image format, frame bounds, and per-frame transparency. Validation does not assess visual quality or rights; inspect the preview and confirm the user has permission to use the assets.
 
-Use `attach-avatar` to copy and validate the pack into the film project. The setup skill must get the user's approval of the avatar review sheet before saving it to their profile.
+Use `attach-avatar` to validate the pack and install it in the AIVEE Explainer Library. Studio reads and applies the selected pack; AIVEE only receives the resulting media assets. The setup skill must get the user's approval of the avatar review sheet before saving it to the profile.
