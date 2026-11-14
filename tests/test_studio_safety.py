@@ -24,6 +24,9 @@ class StudioSafetyTest(unittest.TestCase):
             self.assertEqual(studio_data(root), root)
             namespace = root / "studio-data" / "explainer"
             namespace.mkdir(parents=True)
+            (root / "project.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(studio_data(root), root)
+            (namespace / "project.json").write_text("{}", encoding="utf-8")
             self.assertEqual(studio_data(root), namespace)
 
     def test_studio_data_rejects_a_symlink_escape(self):

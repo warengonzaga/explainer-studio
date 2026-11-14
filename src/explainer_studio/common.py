@@ -74,7 +74,11 @@ def studio_data(root: Path) -> Path:
     resolved = target.resolve()
     if not resolved.is_relative_to(root.resolve()):
         raise ProjectError("Studio data directory leaves the AIVEE project")
-    return resolved if resolved.is_dir() else root
+    if not resolved.is_dir():
+        return root
+    if not (resolved / "project.json").is_file() and (root / "project.json").is_file():
+        return root
+    return resolved
 
 
 def studio_file(root: Path, name: str) -> Path:
