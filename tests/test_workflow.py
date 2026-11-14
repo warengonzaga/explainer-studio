@@ -35,8 +35,10 @@ class WorkflowTest(unittest.TestCase):
             "name": "aivee", "version": AIVEE_VERSION, "bin": {"aivee": "src/cli.mjs"},
         }), encoding="utf-8")
         (package / "src" / "cli.mjs").write_text('''
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
+const runtime = join(process.env.EXPLAINER_STUDIO_HOME, 'runtime');
 const args = process.argv.slice(2);
 if (args[0] === 'capabilities') {
   console.log(JSON.stringify({ render: { requirementsAvailable: true, outputs: { mp4: { defaultCodecAvailable: true } } } }));
@@ -58,9 +60,20 @@ if (args[0] === 'capabilities') {
   console.log(JSON.stringify({ project, studioData }));
 } else if (args[0] === 'asset' && args[1] === 'register') {
   const project = resolve(args[2]), source = resolve(args[3]), id = args[4];
+  const catalog = join(project, 'test-assets.json');
+  if (existsSync(join(runtime, 'fail-register'))) {
+    unlinkSync(join(runtime, 'fail-register'));
+    throw new Error('injected registration failure');
+  }
   const path = `assets/${id}${source.slice(source.lastIndexOf('.'))}`;
   copyFileSync(source, join(project, path));
-  console.log(JSON.stringify({ id, path }));
+  const asset = { id, path, sha256: createHash('sha256').update(readFileSync(source)).digest('hex') };
+  const assets = existsSync(catalog) ? JSON.parse(readFileSync(catalog, 'utf8')) : [];
+  assets.push(asset); writeFileSync(catalog, JSON.stringify(assets));
+  console.log(JSON.stringify(asset));
+} else if (args[0] === 'asset' && args[1] === 'list') {
+  const project = resolve(args[2]), catalog = join(project, 'test-assets.json');
+  console.log(JSON.stringify({ assets: existsSync(catalog) ? JSON.parse(readFileSync(catalog, 'utf8')) : [] }));
 } else throw new Error(`unsupported test command: ${args.join(' ')}`);
 ''', encoding="utf-8")
 
@@ -153,6 +166,15 @@ if (args[0] === 'capabilities') {
             failed = cli("retime", project, "failed-retime", "--voice", new_voice, "--words", invalid_timing, success=False)
             self.assertIn("word timings must be a nonempty JSON array", failed.stderr)
             self.assertFalse((aivee_home / "Studios" / "Explainer" / "Projects" / "failed-retime").exists())
+            runtime = Path(env["EXPLAINER_STUDIO_HOME"]) / "runtime"
+            (runtime / "fail-register").write_text("fail once", encoding="utf-8")
+            interrupted = cli("retime", project, "retry-retime", "--voice", new_voice, "--words", timing, success=False)
+            self.assertIn("injected registration failure", interrupted.stderr)
+            retry_project = aivee_home / "Studios" / "Explainer" / "Projects" / "retry-retime"
+            retry_data = retry_project / "studio-data" / "explainer"
+            self.assertTrue((retry_data / ".explainer-retime.json").is_file())
+            cli("retime", project, "retry-retime", "--voice", new_voice, "--words", timing)
+            self.assertFalse((retry_data / ".explainer-retime.json").exists())
             shifted_words = [{**word, "start": word["start"] + .1, "end": word["end"] + .1} for word in changed_words]
             timing.write_text(json.dumps(shifted_words), encoding="utf-8")
             retimed = aivee_home / "Studios" / "Explainer" / "Projects" / "retimed"

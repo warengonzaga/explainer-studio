@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -370,9 +371,10 @@ def attach_voice(args) -> None:
 
 def retime(args) -> None:
     import hashlib
+    import tempfile
 
-    from .engine import create_aivee_project, register_asset
-    from .timing import build_storyboard, import_words, transcribe, validate_storyboard
+    from .engine import create_aivee_project, list_project_assets, register_asset
+    from .timing import build_storyboard, transcribe, validate_storyboard, validate_words
 
     source = Path(args.project).expanduser().resolve()
     source_data = studio_data(source)
@@ -384,29 +386,30 @@ def retime(args) -> None:
     validate_storyboard(source, old_board)
     profile = load_profile()
     duration = probe_duration(voice)
+    script = source_data / "script.txt"
+    if not script.is_file():
+        raise ProjectError(f"project script not found: {script}")
     if args.words:
-        from .timing import validate_words
+        words_source = Path(args.words).expanduser().resolve()
+        preflight_words = read_json(words_source)
+        validate_words(preflight_words, duration)
+    else:
+        preflight_words = None
 
-        validate_words(read_json(Path(args.words).expanduser().resolve()), duration)
-    result = create_aivee_project(Path(profile["aivee_home"]), args.new_project, duration)
-    target, data = Path(result["project"]).resolve(), Path(result["studioData"]).resolve()
+    assets = {}
+    for relative in [old_project.get("logo"), old_project.get("music")]:
+        if relative:
+            assets[relative] = project_file(source, relative)
+    for scene in old_board["scenes"]:
+        references = [scene.get("asset"), *(cue.get("asset") for cue in scene.get("visual_cues", []))]
+        for relative in references:
+            if relative:
+                assets[relative] = project_file(source, relative)
+    for relative, path in assets.items():
+        if not path.is_file():
+            raise ProjectError(f"project asset not found: {path}")
+
     project = dict(old_project)
-    project["voice"] = register_asset(target, voice, "narration")["path"]
-    asset_paths = {}
-
-    def copy_asset(relative: str | None) -> str | None:
-        if relative is None:
-            return None
-        if relative not in asset_paths:
-            source_asset = project_file(source, relative)
-            if not source_asset.is_file():
-                raise ProjectError(f"project asset not found: {source_asset}")
-            asset_id = "source-" + hashlib.sha256(relative.encode()).hexdigest()[:10]
-            asset_paths[relative] = register_asset(target, source_asset, asset_id)["path"]
-        return asset_paths[relative]
-
-    for field in ("logo", "music"):
-        project[field] = copy_asset(project.get(field))
     if project.get("avatar_pack"):
         avatar_value = Path(project["avatar_pack"]).expanduser()
         avatar_source = avatar_value.resolve() if avatar_value.is_absolute() else project_file(source, str(avatar_value))
@@ -421,16 +424,87 @@ def retime(args) -> None:
             _replace_avatar_pack(avatar_source, avatar_target)
         validate_pack(avatar_target.parent, avatar_target.name)
         project["avatar_pack"] = str(avatar_target.resolve())
-    script = source_data / "script.txt"
-    shutil.copy2(script, data / "script.txt")
-    write_json(data / "project.json", project)
-    if args.words:
-        import_words(target, Path(args.words).expanduser().resolve())
+
+    # Run transcription and storyboard validation before AIVEE reserves the target slug.
+    with tempfile.TemporaryDirectory(prefix="explainer-retime-") as temporary:
+        preflight = Path(temporary)
+        preflight_data = preflight / "studio-data" / "explainer"
+        preflight_data.mkdir(parents=True)
+        preflight_voice = preflight / "assets" / f"narration{voice.suffix.lower()}"
+        preflight_voice.parent.mkdir(parents=True)
+        shutil.copy2(voice, preflight_voice)
+        preflight_project = {**project, "voice": preflight_voice.relative_to(preflight).as_posix(), "avatar_pack": None}
+        write_json(preflight_data / "project.json", preflight_project)
+        shutil.copy2(script, preflight_data / "script.txt")
+        if preflight_words is not None:
+            write_json(preflight_data / "words.json", preflight_words)
+        else:
+            transcribe(preflight, args.model, args.language)
+        board = build_storyboard(preflight)
+        if len(board["scenes"]) != len(old_board["scenes"]):
+            raise ProjectError("retimed scene count differs; review the new storyboard before copying scene choices")
+        words = read_json(preflight_data / "words.json")
+
+    fingerprint_source = {
+        "project": old_project,
+        "storyboard": old_board,
+        "script_sha256": file_hash(script),
+        "voice_sha256": file_hash(voice),
+        "words_sha256": file_hash(words_source) if args.words else None,
+        "model": args.model if not args.words else None,
+        "language": args.language if not args.words else None,
+        "assets": {relative: file_hash(path) for relative, path in assets.items()},
+    }
+    fingerprint = hashlib.sha256(json.dumps(fingerprint_source, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", args.new_project):
+        raise ProjectError("use a lowercase kebab-case project slug")
+    projects = Path(profile["aivee_workspace"]["projects"]).expanduser().resolve()
+    expected_target = projects / args.new_project
+    marker_name = ".explainer-retime.json"
+    if expected_target.is_symlink():
+        raise ProjectError("AIVEE project path must not be a symlink")
+    if expected_target.exists():
+        if expected_target.resolve().parent != projects:
+            raise ProjectError("AIVEE project path must be a direct child of its projects directory")
+        target, data = expected_target.resolve(), studio_data(expected_target.resolve())
+        marker = data / marker_name
+        marker_data = read_json(marker) if marker.is_file() and not marker.is_symlink() else None
+        if not isinstance(marker_data, dict) or marker_data.get("fingerprint") != fingerprint:
+            raise ProjectError(f"AIVEE project already exists: {target}")
     else:
-        transcribe(target, args.model, args.language)
-    board = build_storyboard(target)
-    if len(board["scenes"]) != len(old_board["scenes"]):
-        raise ProjectError("retimed scene count differs; review the new storyboard before copying scene choices")
+        result = create_aivee_project(Path(profile["aivee_home"]), args.new_project, duration)
+        target, data = Path(result["project"]).resolve(), Path(result["studioData"]).resolve()
+        write_json(data / marker_name, {"fingerprint": fingerprint})
+
+    registered_assets = list_project_assets(target).get("assets", [])
+    asset_paths = {}
+
+    def register_or_reuse(path: Path, asset_id: str) -> str:
+        digest = file_hash(path)
+        existing = next((asset for asset in registered_assets if asset.get("id") == asset_id), None)
+        if existing:
+            if existing.get("sha256") != digest:
+                raise ProjectError(f"incomplete retime has a conflicting registered asset: {asset_id}")
+            return existing["path"]
+        asset = register_asset(target, path, asset_id)
+        registered_assets.append(asset)
+        return asset["path"]
+
+    project["voice"] = register_or_reuse(voice, "narration")
+
+    def copy_asset(relative: str | None) -> str | None:
+        if relative is None:
+            return None
+        if relative not in asset_paths:
+            asset_id = "source-" + hashlib.sha256(relative.encode()).hexdigest()[:10]
+            asset_paths[relative] = register_or_reuse(assets[relative], asset_id)
+        return asset_paths[relative]
+
+    for field in ("logo", "music"):
+        project[field] = copy_asset(project.get(field))
+    write_json(data / "project.json", project)
+    shutil.copy2(script, data / "script.txt")
+    write_json(data / "words.json", words)
     for new, old in zip(board["scenes"], old_board["scenes"]):
         for key in ("headline", "pose", "asset", "visual_label"):
             if key in old:
@@ -445,6 +519,7 @@ def retime(args) -> None:
             } for cue in old.get("visual_cues", [])]
     validate_storyboard(target, board)
     write_json(studio_file(target, "storyboard.json"), board)
+    (data / marker_name).unlink(missing_ok=True)
     print(f"retimed project created: {target}; review and approve the new storyboard")
 
 

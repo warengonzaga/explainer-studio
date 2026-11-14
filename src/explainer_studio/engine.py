@@ -198,6 +198,15 @@ def register_asset(project: Path, source: Path, asset_id: str) -> dict:
         raise ProjectError("AIVEE returned an invalid asset response") from exc
 
 
+def list_project_assets(project: Path) -> dict:
+    command, _ = resolve_aivee()
+    result = _engine_cli(command, project, ["asset", "list", str(project)])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid asset list") from exc
+
+
 def _browser_env(cache_dir: Path) -> dict[str, str]:
     environment = {"HYPERFRAMES_CACHE_DIR": str(cache_dir)}
     configured = os.environ.get("HYPERFRAMES_BROWSER_PATH")
