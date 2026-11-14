@@ -412,13 +412,13 @@ def retime(args) -> None:
         avatar_source = avatar_value.resolve() if avatar_value.is_absolute() else project_file(source, str(avatar_value))
         if not avatar_source.is_dir():
             raise ProjectError(f"avatar pack not found: {avatar_source}")
-        from .avatar import copy_pack, validate_pack
+        from .avatar import validate_pack
 
         avatar_manifest = validate_pack(avatar_source.parent, avatar_source.name)
         avatar_library = Path(profile["aivee_workspace"]["avatarPacks"])
         avatar_target = avatar_library / avatar_manifest["id"]
         if not avatar_target.exists():
-            copy_pack(avatar_source, avatar_target)
+            _replace_avatar_pack(avatar_source, avatar_target)
         validate_pack(avatar_target.parent, avatar_target.name)
         project["avatar_pack"] = str(avatar_target.resolve())
     script = source_data / "script.txt"
@@ -464,8 +464,7 @@ def attach_avatar(args) -> None:
             raise ProjectError(f"avatar pack id already exists in the AIVEE library: {target}")
         validate_pack(target.parent, target.name)
     else:
-        copy_pack(source, target)
-    validate_pack(target.parent, target.name)
+        _replace_avatar_pack(source, target)
     data = studio_data(root)
     project = read_json(data / "project.json")
     project["avatar_pack"] = str(target.resolve())

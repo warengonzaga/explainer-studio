@@ -107,6 +107,25 @@ class StudioSafetyTest(unittest.TestCase):
                     _replace_avatar_pack(source, target)
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "existing pack")
 
+    def test_failed_avatar_copy_leaves_no_partial_library_pack(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            target = root / "library" / "avatar"
+            target.parent.mkdir()
+
+            def fail_after_partial_copy(_source, stage):
+                stage.mkdir()
+                (stage / "partial.png").write_bytes(b"partial")
+                raise OSError("copy failed")
+
+            with patch("explainer_studio.avatar.copy_pack", side_effect=fail_after_partial_copy):
+                with self.assertRaisesRegex(OSError, "copy failed"):
+                    _replace_avatar_pack(source, target)
+            self.assertFalse(target.exists())
+            self.assertEqual(list(target.parent.glob("avatar.stage-*")), [])
+
 
 if __name__ == "__main__":
     unittest.main()
