@@ -12,11 +12,33 @@ sys.path.insert(0, str(ROOT / "src"))
 from PIL import Image, ImageDraw
 
 from explainer_studio.cli import _replace_avatar_pack
-from explainer_studio.common import ProjectError
+from explainer_studio.common import ProjectError, studio_data
 from explainer_studio.engine import _check_reels_box, _visual_layers
 
 
 class StudioSafetyTest(unittest.TestCase):
+    def test_studio_data_uses_aivee_namespace_and_keeps_legacy_root_fallback(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "project"
+            root.mkdir()
+            self.assertEqual(studio_data(root), root)
+            namespace = root / "studio-data" / "explainer"
+            namespace.mkdir(parents=True)
+            self.assertEqual(studio_data(root), namespace)
+
+    def test_studio_data_rejects_a_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root, outside = base / "project", base / "outside"
+            root.mkdir()
+            outside.mkdir()
+            try:
+                (root / "studio-data").symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+            with self.assertRaisesRegex(ProjectError, "must not be symlinks"):
+                studio_data(root)
+
     def test_transparent_layers_are_cropped_before_registering(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "project"

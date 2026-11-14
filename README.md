@@ -36,7 +36,7 @@ Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or
 python scripts/explainer.py bootstrap
 ```
 
-For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, and installs the supported `aivee` npm package into Studio's user data directory when needed. AIVEE is required for composition and rendering, but users do not need to install it separately. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, default colors, and `~/Explainer Studio` output. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, installs the supported `aivee` npm package when needed, and asks AIVEE to create its workspace. Users do not need to install AIVEE separately. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
 For a local checkout, add this repository as a plugin marketplace and install `explainer-studio`:
 
@@ -61,7 +61,7 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
 3. Review the storyboard and approve it in chat.
 4. Render a preview through AIVEE, request revisions, then render and inspect the final video. AIVEE owns all composition and rendering.
-5. Share the MP4 and Studio project folder; its editable AIVEE project is retained under `engine/video-projects/`.
+5. Share the MP4 and AIVEE-owned project folder; the editable timeline, registered media, renders, and Studio workflow files are kept together in the project. Studio workflow files live under `studio-data/explainer/`.
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 

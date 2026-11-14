@@ -64,6 +64,23 @@ def project_file(root: Path, relative: str) -> Path:
     return target
 
 
+def studio_data(root: Path) -> Path:
+    """Use AIVEE's Studio namespace for new projects and the root for legacy ones."""
+    target = root / "studio-data" / "explainer"
+    if target.is_symlink() or target.parent.is_symlink():
+        raise ProjectError("Studio data directories must not be symlinks")
+    if not target.exists() and not target.is_symlink():
+        return root
+    resolved = target.resolve()
+    if not resolved.is_relative_to(root.resolve()):
+        raise ProjectError("Studio data directory leaves the AIVEE project")
+    return resolved if resolved.is_dir() else root
+
+
+def studio_file(root: Path, name: str) -> Path:
+    return studio_data(root) / name
+
+
 def probe_duration(path: Path) -> float:
     out = run(
         [command("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "default=nokey=1:noprint_wrappers=1", str(path)],

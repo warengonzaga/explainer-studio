@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,11 +14,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from .audio import mouth_at, mouth_track, phonetic_mouth_track
-from .common import ProjectError, probe_duration, project_file, read_json, studio_home, write_json
+from .common import ProjectError, probe_duration, project_file, read_json, studio_data, studio_home, write_json
 from .timing import storyboard_hash, validate_storyboard, validate_words
 
 
-AIVEE_VERSION = "0.1.1"
+AIVEE_VERSION = "0.1.2"
 UNDICI_VERSION = "7.30.2"
 
 
@@ -170,6 +171,33 @@ def _engine_cli(command: list[str], cwd: Path, args: list[str], env: dict | None
     return result.stdout.strip()
 
 
+def setup_aivee_home(home: Path) -> dict:
+    command, _ = ensure_aivee()
+    result = _engine_cli(command, Path.home(), ["studio", "setup", "explainer", "--home", str(home)])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid workspace response") from exc
+
+
+def create_aivee_project(home: Path, slug: str, duration: float = 10) -> dict:
+    command, _ = resolve_aivee()
+    result = _engine_cli(command, home, ["studio", "project", "create", "explainer", slug, "--home", str(home), "1920x1080", "60", f"{duration:.6f}"])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid project response") from exc
+
+
+def register_asset(project: Path, source: Path, asset_id: str) -> dict:
+    command, _ = resolve_aivee()
+    result = _engine_cli(command, project, ["asset", "register", str(project), str(source), asset_id])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid asset response") from exc
+
+
 def _browser_env(cache_dir: Path) -> dict[str, str]:
     environment = {"HYPERFRAMES_CACHE_DIR": str(cache_dir)}
     configured = os.environ.get("HYPERFRAMES_BROWSER_PATH")
@@ -273,14 +301,15 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     from .avatar import _is_blinking, avatar_box, draw_avatar
 
     root = root.resolve()
-    project = read_json(root / "project.json")
-    board = read_json(root / "storyboard.json")
+    data = studio_data(root)
+    project = read_json(data / "project.json")
+    board = read_json(data / "storyboard.json")
     if not board.get("approved") or board.get("approval_hash") != storyboard_hash(board):
         raise ProjectError("storyboard is not approved; review it in chat, then run `explainer approve <project>`")
     voice = project_file(root, project["voice"])
     duration = probe_duration(voice)
     validate_storyboard(root, board, duration)
-    words = read_json(root / "words.json")
+    words = read_json(data / "words.json")
     validate_words(words, duration)
     if output.exists():
         raise ProjectError(f"output already exists: {output}")
@@ -294,10 +323,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     if width < 320 or height < 240 or fps < 1 or fps > 60:
         raise ProjectError("invalid project resolution or frame rate")
 
-    scratch_root = root / ".work"
+    scratch_root = data / ".work"
     scratch_root.mkdir(parents=True, exist_ok=True)
-    engine_workspace = root / "engine"
-    engine_workspace.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="engine-export-", dir=scratch_root) as temporary:
         temporary = Path(temporary)
         scenes = board["scenes"]
@@ -321,9 +348,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             sprite.save(path)
             avatar_paths[(pose, mouth, blinking)] = path
 
-        slug = f"studio-{uuid4().hex[:12]}"
-        project_path = engine_workspace / "video-projects" / slug
-        _engine_cli(engine_command, engine_workspace, ["project", "create", slug, f"{width}x{height}", str(fps), f"{duration:.6f}"])
+        project_path = root
         narration = temporary / f"studio-narration{voice.suffix.lower()}"
         shutil.copy2(voice, narration)
         visual_records = []
@@ -355,8 +380,12 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         if logo_path:
             asset_records.append((logo_path, "studio-logo"))
         asset_records.extend((source, asset_id) for asset_id, source, _ in visual_records)
+        render_assets = {}
         for path, asset_id in dict.fromkeys(asset_records):
-            _engine_cli(engine_command, project_path, ["asset", "register", str(project_path), str(path), asset_id])
+            safe_id = re.sub(r"[^a-z0-9]+", "-", asset_id.lower()).strip("-")
+            registered_id = f"render-{uuid4().hex[:8]}-{safe_id}"
+            asset = json.loads(_engine_cli(engine_command, project_path, ["asset", "register", str(project_path), str(path), registered_id]))
+            render_assets[asset_id] = {**asset, "id": registered_id}
 
         timeline_path = project_path / "timeline.json"
         timeline = read_json(timeline_path)
@@ -492,6 +521,10 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             timeline["audioMix"] = {"sidechain": [{"sourceTrackId": "studio-voice", "targetTrackId": "studio-music", "thresholdDb": -34, "ratio": 5, "attackSeconds": 0.02, "releaseSeconds": 0.4}]}
         timeline["audioMastering"] = {"integratedLoudnessLUFS": -16, "truePeakDBTP": -1.5, "loudnessRangeLU": 11}
         timeline["project"]["durationSeconds"] = duration
+        for track in timeline.get("tracks", []):
+            for clip in track.get("clips", []):
+                if clip.get("assetId") in render_assets:
+                    clip["assetId"] = render_assets[clip["assetId"]]["id"]
         _write_engine_timeline(project_path, timeline_path, timeline)
         _engine_cli(engine_command, project_path, ["timeline", "validate", str(timeline_path)])
         output.parent.mkdir(parents=True, exist_ok=True)

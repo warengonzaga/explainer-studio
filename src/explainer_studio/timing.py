@@ -9,7 +9,7 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from .common import ProjectError, file_hash, probe_duration, project_file, read_json, write_json
+from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_file, write_json
 
 
 def tokens(text: str) -> list[str]:
@@ -25,7 +25,7 @@ def storyboard_hash(board: dict) -> str:
 
 
 def _invalidate_storyboard(root: Path) -> None:
-    path = root / "storyboard.json"
+    path = studio_file(root, "storyboard.json")
     if not path.is_file():
         return
     board = read_json(path)
@@ -33,7 +33,7 @@ def _invalidate_storyboard(root: Path) -> None:
         return
     if not isinstance(board.get("source"), dict):
         board["source"] = {}
-    board["source"]["words_sha256"] = file_hash(root / "words.json")
+    board["source"]["words_sha256"] = file_hash(studio_file(root, "words.json"))
     board["approved"] = False
     board.pop("approval_hash", None)
     write_json(path, board)
@@ -64,7 +64,7 @@ def transcribe(root: Path, model_name: str = "small", language: str | None = Non
         from faster_whisper import WhisperModel
     except ImportError as exc:
         raise ProjectError("transcription needs the optional package: pip install -e '.[transcribe]'") from exc
-    project = read_json(root / "project.json")
+    project = read_json(studio_file(root, "project.json"))
     voice = project_file(root, project["voice"])
     if not voice.is_file():
         raise ProjectError(f"missing voice recording: {voice}")
@@ -79,28 +79,28 @@ def transcribe(root: Path, model_name: str = "small", language: str | None = Non
                 end = min(duration, max(round(word.end, 3), start + 0.02))
                 words.append({"text": word.word.strip(), "start": start, "end": end})
     validate_words(words, duration)
-    write_json(root / "words.json", words)
+    write_json(studio_file(root, "words.json"), words)
     _invalidate_storyboard(root)
     return len(words)
 
 
 def import_words(root: Path, source: Path) -> int:
-    project = read_json(root / "project.json")
+    project = read_json(studio_file(root, "project.json"))
     voice = project_file(root, project["voice"])
     words = read_json(source)
     validate_words(words, probe_duration(voice))
-    write_json(root / "words.json", words)
+    write_json(studio_file(root, "words.json"), words)
     _invalidate_storyboard(root)
     return len(words)
 
 
 def build_storyboard(root: Path) -> dict:
-    project = read_json(root / "project.json")
+    project = read_json(studio_file(root, "project.json"))
     voice = project_file(root, project["voice"])
     duration = probe_duration(voice)
-    words = read_json(root / "words.json")
+    words = read_json(studio_file(root, "words.json"))
     validate_words(words, duration)
-    paragraphs = [p.strip().replace("\n", " ") for p in re.split(r"\n\s*\n", (root / "script.txt").read_text(encoding="utf-8")) if p.strip()]
+    paragraphs = [p.strip().replace("\n", " ") for p in re.split(r"\n\s*\n", studio_file(root, "script.txt").read_text(encoding="utf-8")) if p.strip()]
     if not paragraphs:
         raise ProjectError("script.txt needs at least one paragraph")
     script_words = [w for p in paragraphs for w in tokens(p)]
@@ -142,29 +142,29 @@ def build_storyboard(root: Path) -> dict:
     board = {
         "version": 1, "approved": False, "scenes": scenes,
         "source": {
-            "script_sha256": file_hash(root / "script.txt"), "voice_sha256": file_hash(voice),
-            "words_sha256": file_hash(root / "words.json"),
+            "script_sha256": file_hash(studio_file(root, "script.txt")), "voice_sha256": file_hash(voice),
+            "words_sha256": file_hash(studio_file(root, "words.json")),
         },
     }
     validate_storyboard(root, board, duration)
-    write_json(root / "storyboard.json", board)
+    write_json(studio_file(root, "storyboard.json"), board)
     return board
 
 
 def validate_storyboard(root: Path, board: dict, duration: float | None = None) -> None:
     if not isinstance(board, dict) or board.get("version") != 1 or not isinstance(board.get("scenes"), list) or not board["scenes"]:
         raise ProjectError("storyboard.json needs version 1 and a nonempty scenes array")
-    project = read_json(root / "project.json")
+    project = read_json(studio_file(root, "project.json"))
     from .avatar import pose_supported, validate_pack
 
     avatar_manifest = validate_pack(root, project["avatar_pack"]) if project.get("avatar_pack") else None
     voice = project_file(root, project["voice"])
     if duration is None:
         duration = probe_duration(voice)
-    validate_words(read_json(root / "words.json"), duration)
+    validate_words(read_json(studio_file(root, "words.json")), duration)
     source = board.get("source")
-    words_path = root / "words.json"
-    if not isinstance(source, dict) or source.get("script_sha256") != file_hash(root / "script.txt") or source.get("voice_sha256") != file_hash(voice):
+    words_path = studio_file(root, "words.json")
+    if not isinstance(source, dict) or source.get("script_sha256") != file_hash(studio_file(root, "script.txt")) or source.get("voice_sha256") != file_hash(voice):
         raise ProjectError("script or narration changed after storyboarding; run storyboard again")
     if source.get("words_sha256") != file_hash(words_path):
         raise ProjectError("word timings changed; review and approve this storyboard again")

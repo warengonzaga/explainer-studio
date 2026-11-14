@@ -11,14 +11,14 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from .common import ProjectError, command, read_json, write_json
+from .common import ProjectError, command, read_json, studio_file, write_json
 from .timing import tokens
 
 
 def contact_sheet(root: Path, video: Path, output: Path) -> Path:
     if output.exists():
         raise ProjectError(f"contact sheet already exists: {output}")
-    board = read_json(root / "storyboard.json")
+    board = read_json(studio_file(root, "storyboard.json"))
     scenes = board["scenes"]
     frames = []
     for scene in scenes:
@@ -71,7 +71,7 @@ def compare_words(source: list[dict], rendered: list[dict]) -> dict:
 
 
 def sync_check(root: Path, video: Path, model: str, language: str | None, render_words: Path | None = None) -> dict:
-    source = read_json(root / "words.json")
+    source = read_json(studio_file(root, "words.json"))
     if render_words:
         rendered = read_json(render_words)
     else:
@@ -84,6 +84,6 @@ def sync_check(root: Path, video: Path, model: str, language: str | None, render
             {"text": word.word.strip(), "start": round(word.start, 3), "end": round(word.end, 3)}
             for segment in segments for word in (segment.words or []) if tokens(word.word)
         ]
-        work = root / ".work" / "render-words.json"
+        work = studio_file(root, ".work") / "render-words.json"
         write_json(work, rendered)
     return compare_words(source, rendered)

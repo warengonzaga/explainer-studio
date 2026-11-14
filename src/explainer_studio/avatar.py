@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from .common import ProjectError, project_file, read_json
+from .common import ProjectError, project_file, read_json, studio_file
 
 
 POSES = {"idle", "present", "point", "celebrate"}
@@ -136,7 +136,14 @@ def _validate_v1(pack: Path, manifest: dict, *, draft: bool = False) -> dict:
 
 
 def validate_pack(root: Path, pack_relative: str, *, allow_bundled_legacy: bool = False, draft: bool = False) -> dict:
-    pack = project_file(root, pack_relative)
+    candidate = Path(pack_relative).expanduser()
+    if candidate.is_absolute():
+        expected_library = root.resolve().parent.parent / "Library" / "Avatar Packs"
+        pack = candidate.resolve()
+        if not pack.is_relative_to(expected_library.resolve()):
+            raise ProjectError("avatar pack must be inside the AIVEE Explainer Library")
+    else:
+        pack = project_file(root, pack_relative)
     if not pack.is_dir():
         raise ProjectError(f"avatar pack not found: {pack}")
     if (pack / "manifest.json").is_symlink():
@@ -274,7 +281,8 @@ def draw_avatar(canvas: Image.Image, root: Path, project: dict, pose: str, mouth
     pack_relative = project.get("avatar_pack")
     if pack_relative:
         manifest = validate_pack(root, pack_relative, draft=bool(project.get("avatar_preview_draft")))
-        pack = project_file(root, pack_relative)
+        pack_value = Path(pack_relative).expanduser()
+        pack = pack_value.resolve() if pack_value.is_absolute() else project_file(root, pack_relative)
     else:
         pack = _bundled_default_pack()
         manifest = validate_pack(pack.parent, pack.name, allow_bundled_legacy=True)
@@ -374,7 +382,7 @@ def pose_supported(manifest: dict, pose: str) -> bool:
 
 
 def preview_avatar(root: Path, output: Path) -> Path:
-    project = read_json(root / "project.json")
+    project = read_json(studio_file(root, "project.json"))
     return _preview_sheet(root, project, output)
 
 
