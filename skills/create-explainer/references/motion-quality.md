@@ -39,7 +39,7 @@ These are project recommendations for story planning, art direction, animation a
 
 ## Native AIVEE composition route
 
-Studio's `visual_cues` and PNG layer manifests support preset staged entrances. When the storyboard needs expressive motion, author a project-specific AIVEE composition using its existing HTML/SVG and GSAP support. Merely staggering parts of a finished diagram does not fulfill object travel, transformations, or drawn-path choreography. Use `python <plugin-root>/scripts/explainer.py engine -- ...` to invoke the managed AIVEE CLI without relying on a repository checkout being on `PATH`.
+Studio's `visual_cues` and PNG layer manifests support preset staged entrances. When the storyboard needs expressive motion, author a project-specific AIVEE composition using its existing HTML/SVG and GSAP support. Merely staggering parts of a finished diagram does not fulfill object travel, transformations, or drawn-path choreography. Use `python <plugin-root>/scripts/explainer.py engine -- ...` to invoke the globally installed AIVEE CLI without relying on a repository checkout being on `PATH`.
 
 1. Create a new AIVEE project or a separate copy of the prior editable project. Preserve source narration, avatar artwork, approved avatar timing, and existing outputs. Give the new project its own metadata and output filename.
 2. Author the visual scene in the AIVEE project's `index.html`, using local assets and the project's GSAP dependency. Build original SVG or HTML objects as independently addressable elements with stable IDs. Use a paused GSAP timeline registered as `window.__timelines.root`, with the root's dimensions and duration matching the AIVEE project.

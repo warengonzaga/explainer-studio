@@ -288,7 +288,7 @@ def install_engine(_) -> None:
         raise ProjectError(f"AIVEE installation could not be verified: {detail[-1200:]}")
     manifest_path = Path(package_root) / "package.json"
     version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
-    print(f"AIVEE {version} ready: {package_root}")
+    print(f"AIVEE {version} ready from the global npm installation: {package_root}")
 
 
 def engine_command(args) -> int:
@@ -684,7 +684,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("bootstrap", help="create the managed Studio Python environment")
     p.add_argument("--transcribe", action="store_true", help="also install optional faster-whisper dependencies")
     p.set_defaults(handler=bootstrap)
-    p = sub.add_parser("install-engine", help="install or verify AIVEE for this Studio profile")
+    p = sub.add_parser("install-engine", help="install AIVEE globally if missing, or verify the shared CLI")
     p.set_defaults(handler=install_engine)
     p = sub.add_parser("engine", help="run an AIVEE CLI command")
     p.add_argument("arguments", nargs=argparse.REMAINDER)
