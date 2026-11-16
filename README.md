@@ -38,16 +38,29 @@ python scripts/explainer.py bootstrap
 
 For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, reuses a compatible global AIVEE CLI, or runs `npm install --global aivee@latest` when AIVEE is missing. AIVEE is shared globally with other Studios; Studio does not keep a private copy or silently replace an incompatible global installation. If an installed version is incompatible, update it with `npm install --global aivee@latest` and rerun setup. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
-For a local checkout, add this repository as a plugin marketplace and install `explainer-studio`:
+## Install and use in chat
+
+### Codex
 
 ```text
-Claude Code: /plugin marketplace add warengonzaga/explainer-studio
-Claude Code: /plugin install explainer-studio@explainer-studio
-Codex:       codex plugin marketplace add warengonzaga/explainer-studio
-Codex:       codex plugin add explainer-studio@explainer-studio
+codex plugin marketplace add warengonzaga/explainer-studio
+codex plugin add explainer-studio@explainer-studio
 ```
 
-Claude Code also supports local development with `claude --plugin-dir <path-to-this-repo>`.
+Open a Codex chat with the plugin enabled and start with **Set up Explainer Studio** (or ask Codex to set it up). After setup, describe the video you want, for example: “Create a 60-second Reel explaining open source.” Codex guides you through the script, narration, storyboard approval, and render review in chat.
+
+### Claude Code
+
+In a Claude Code session, add the marketplace and install the plugin:
+
+```text
+/plugin marketplace add warengonzaga/explainer-studio
+/plugin install explainer-studio@explainer-studio
+```
+
+Run `/explainer-studio:setup` for first-time setup. To make a video, run `/explainer-studio:create-explainer` or describe the video in chat and let the skill guide you through the workflow.
+
+For local plugin development, Claude Code also supports `claude --plugin-dir <path-to-this-repo>`.
 
 ## 🎙️ Voice and avatars
 
