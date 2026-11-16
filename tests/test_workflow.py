@@ -16,32 +16,25 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts" / "explainer.py"
 sys.path.insert(0, str(ROOT / "src"))
-from explainer_studio.engine import AIVEE_VERSION
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe") and shutil.which("node") and shutil.which("npm"), "FFmpeg and Node.js/npm are required")
 class WorkflowTest(unittest.TestCase):
     @staticmethod
-    def install_fake_aivee(home: Path) -> None:
-        runtime = home / "runtime"
-        package = runtime / "node_modules" / "aivee"
+    def install_fake_aivee(prefix: Path) -> None:
+        package = prefix / "node_modules" / "aivee"
         (package / "src").mkdir(parents=True)
-        (runtime / "package.json").write_text(json.dumps({
-            "private": True,
-            "dependencies": {"aivee": AIVEE_VERSION},
-            "overrides": {"hyperframes": {"undici": "7.30.2"}},
-        }), encoding="utf-8")
         (package / "package.json").write_text(json.dumps({
-            "name": "aivee", "version": AIVEE_VERSION, "bin": {"aivee": "src/cli.mjs"},
+            "name": "aivee", "version": "0.1.0", "bin": {"aivee": "src/cli.mjs"},
         }), encoding="utf-8")
         (package / "src" / "cli.mjs").write_text('''
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
-const runtime = join(process.env.EXPLAINER_STUDIO_HOME, 'runtime');
+const packageRoot = join(process.env.NPM_CONFIG_PREFIX, 'node_modules', 'aivee');
 const args = process.argv.slice(2);
 if (args[0] === 'capabilities') {
-  console.log(JSON.stringify({ render: { requirementsAvailable: true, outputs: { mp4: { defaultCodecAvailable: true } } } }));
+  console.log(JSON.stringify({ schemaVersion: 1, node: { supported: true }, render: { requirementsAvailable: true, outputs: { mp4: { defaultCodecAvailable: true } } } }));
 } else if (args[0] === 'studio' && args[1] === 'setup') {
   const home = resolve(args[args.indexOf('--home') + 1]);
   const studio = join(home, 'Studios', 'Explainer');
@@ -61,8 +54,8 @@ if (args[0] === 'capabilities') {
 } else if (args[0] === 'asset' && args[1] === 'register') {
   const project = resolve(args[2]), source = resolve(args[3]), id = args[4];
   const catalog = join(project, 'test-assets.json');
-  if (existsSync(join(runtime, 'fail-register'))) {
-    unlinkSync(join(runtime, 'fail-register'));
+  if (existsSync(join(packageRoot, 'fail-register'))) {
+    unlinkSync(join(packageRoot, 'fail-register'));
     throw new Error('injected registration failure');
   }
   const path = `assets/${id}${source.slice(source.lastIndexOf('.'))}`;
@@ -92,8 +85,9 @@ if (args[0] === 'capabilities') {
             base = Path(temp)
             env = os.environ.copy()
             env["EXPLAINER_STUDIO_HOME"] = str(base / "home")
+            env["NPM_CONFIG_PREFIX"] = str(base / "npm-global")
             env["PYTHONPATH"] = str(ROOT / "src")
-            WorkflowTest.install_fake_aivee(Path(env["EXPLAINER_STUDIO_HOME"]))
+            WorkflowTest.install_fake_aivee(Path(env["NPM_CONFIG_PREFIX"]))
             aivee_home = base / "AIVEE"
             project_slug = "film"
             project = aivee_home / "Studios" / "Explainer" / "Projects" / project_slug
@@ -166,8 +160,8 @@ if (args[0] === 'capabilities') {
             failed = cli("retime", project, "failed-retime", "--voice", new_voice, "--words", invalid_timing, success=False)
             self.assertIn("word timings must be a nonempty JSON array", failed.stderr)
             self.assertFalse((aivee_home / "Studios" / "Explainer" / "Projects" / "failed-retime").exists())
-            runtime = Path(env["EXPLAINER_STUDIO_HOME"]) / "runtime"
-            (runtime / "fail-register").write_text("fail once", encoding="utf-8")
+            package = Path(env["NPM_CONFIG_PREFIX"]) / "node_modules" / "aivee"
+            (package / "fail-register").write_text("fail once", encoding="utf-8")
             interrupted = cli("retime", project, "retry-retime", "--voice", new_voice, "--words", timing, success=False)
             self.assertIn("injected registration failure", interrupted.stderr)
             retry_project = aivee_home / "Studios" / "Explainer" / "Projects" / "retry-retime"

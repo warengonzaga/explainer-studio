@@ -30,13 +30,13 @@ The visual quality baseline is a deliberately composed scene with readable artwo
 
 ## 🚀 Quick start
 
-Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. Node.js and npm are needed for Studio to manage its required AIVEE dependency. When running from a source checkout, bootstrap Studio's managed Python environment:
+Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. Studio uses npm's global AIVEE installation. When running from a source checkout, bootstrap Studio's managed Python environment:
 
 ```bash
 python scripts/explainer.py bootstrap
 ```
 
-For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, installs the supported `aivee` npm package when needed, and asks AIVEE to create its workspace. Users do not need to install AIVEE separately. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, reuses a compatible global AIVEE CLI, or runs `npm install --global aivee@latest` when AIVEE is missing. AIVEE is shared globally with other Studios; Studio does not keep a private copy or silently replace an incompatible global installation. If an installed version is incompatible, update it with `npm install --global aivee@latest` and rerun setup. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
 
 For a local checkout, add this repository as a plugin marketplace and install `explainer-studio`:
 

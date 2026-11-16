@@ -18,10 +18,6 @@ from .common import ProjectError, probe_duration, project_file, read_json, studi
 from .timing import storyboard_hash, validate_storyboard, validate_words
 
 
-AIVEE_VERSION = "0.1.2"
-UNDICI_VERSION = "7.30.2"
-
-
 def _node() -> str:
     node = shutil.which("node")
     if not node:
@@ -44,7 +40,7 @@ def _package_cli(package_root: Path) -> tuple[Path, str] | None:
         manifest = read_json(manifest_path)
     except ProjectError:
         return None
-    if not isinstance(manifest, dict) or manifest.get("name") != "aivee" or manifest.get("version") != AIVEE_VERSION:
+    if not isinstance(manifest, dict) or manifest.get("name") != "aivee":
         return None
     entry = manifest.get("bin")
     entry = entry.get("aivee") if isinstance(entry, dict) else entry
@@ -57,74 +53,68 @@ def _package_cli(package_root: Path) -> tuple[Path, str] | None:
     return cli, str(root)
 
 
-def _installed_aivee(node: str) -> tuple[list[str], str] | None:
+def _npm_global_root() -> Path | None:
     npm = shutil.which("npm")
-    roots = []
-    if npm:
-        try:
-            result = subprocess.run([npm, "root", "-g"], capture_output=True, text=True)
-            if result.returncode == 0 and result.stdout.strip():
-                roots.append(Path(result.stdout.strip()))
-        except OSError:
-            pass
-    runtime = studio_home() / "runtime"
     try:
-        manifest = read_json(runtime / "package.json")
-    except ProjectError:
-        manifest = None
-    if (
-        isinstance(manifest, dict)
-        and manifest.get("dependencies", {}).get("aivee") == AIVEE_VERSION
-        and manifest.get("overrides", {}).get("hyperframes", {}).get("undici") == UNDICI_VERSION
-    ):
-        roots.append(runtime / "node_modules")
-    for modules in roots:
-        resolved = _package_cli(modules / "aivee")
-        if resolved:
-            cli, package_root = resolved
-            command = [node, str(cli)]
-            if _verify_aivee(command):
-                return command, package_root
-    return None
+        result = subprocess.run([npm, "root", "-g"], capture_output=True, text=True) if npm else None
+    except OSError:
+        return None
+    return Path(result.stdout.strip()) if result and result.returncode == 0 and result.stdout.strip() else None
+
+
+def _installed_aivee(node: str) -> tuple[list[str], str] | None:
+    modules = _npm_global_root()
+    resolved = _package_cli(modules / "aivee") if modules else None
+    if not resolved:
+        return None
+    cli, package_root = resolved
+    return [node, str(cli)], package_root
+
+
+def _global_aivee_path() -> Path | None:
+    modules = _npm_global_root()
+    return modules / "aivee" if modules else None
 
 
 def resolve_aivee() -> tuple[list[str], str]:
     node = _node()
     installed = _installed_aivee(node)
-    if installed:
+    if installed and _verify_aivee(installed[0]):
         return installed
-    raise ProjectError(f"AIVEE {AIVEE_VERSION} is not installed; run `explainer install-engine` to install it")
+    if installed:
+        raise ProjectError("The global AIVEE installation is incompatible or missing render requirements; run `npm install --global aivee@latest` and retry")
+    package = _global_aivee_path()
+    if package and package.exists():
+        raise ProjectError(f"A global AIVEE package exists but its CLI is invalid: {package}; repair or remove it before installing AIVEE again")
+    raise ProjectError("AIVEE is not installed; run `explainer install-engine` to install it globally")
 
 
 def ensure_aivee() -> tuple[list[str], str]:
     node = _node()
     installed = _installed_aivee(node)
     if installed:
+        if not _verify_aivee(installed[0]):
+            raise ProjectError("The global AIVEE installation is incompatible or missing render requirements; update it with `npm install --global aivee@latest` and retry")
         return installed
+    package = _global_aivee_path()
+    if package and package.exists():
+        raise ProjectError(f"A global AIVEE package exists but its CLI is invalid: {package}; repair or remove it before installing AIVEE again")
     npm = shutil.which("npm")
     if not npm:
         raise ProjectError("npm is required to install AIVEE; install Node.js 22 or later with npm")
-    runtime = studio_home() / "runtime"
     try:
-        runtime.mkdir(parents=True, exist_ok=True)
-        write_json(runtime / "package.json", {
-            "private": True,
-            "dependencies": {"aivee": AIVEE_VERSION},
-            "overrides": {"hyperframes": {"undici": UNDICI_VERSION}},
-        })
         result = subprocess.run(
-            [npm, "install"],
-            cwd=runtime,
+            [npm, "install", "--global", "aivee@latest"],
             capture_output=True,
             text=True,
         )
     except OSError as exc:
         raise ProjectError("Could not run npm to install AIVEE; check npm permissions and retry") from exc
     if result.returncode:
-        raise ProjectError(f"Could not install AIVEE {AIVEE_VERSION} (npm exit {result.returncode}); check network access and npm configuration")
+        raise ProjectError(f"Could not install AIVEE globally (npm exit {result.returncode}); check network access, npm permissions, and npm configuration")
     installed = _installed_aivee(node)
-    if not installed:
-        raise ProjectError(f"AIVEE {AIVEE_VERSION} installation completed but the CLI could not be found")
+    if not installed or not _verify_aivee(installed[0]):
+        raise ProjectError("AIVEE installation completed but the global CLI is unavailable or incompatible; check npm's global prefix and render requirements")
     return installed
 
 
@@ -135,7 +125,9 @@ def _verify_aivee(command: list[str]) -> bool:
             return False
         capabilities = json.loads(result.stdout)
         return (
-            capabilities.get("render", {}).get("requirementsAvailable") is True
+            capabilities.get("schemaVersion") == 1
+            and capabilities.get("node", {}).get("supported") is True
+            and capabilities.get("render", {}).get("requirementsAvailable") is True
             and capabilities.get("render", {}).get("outputs", {}).get("mp4", {}).get("defaultCodecAvailable") is True
         )
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
