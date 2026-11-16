@@ -6,8 +6,8 @@ Explainer Studio is an agent plugin for creating narrated explainer videos from 
 
 ## ✨ Features
 
-- Chat guided first run for brand, language, voice route, and avatar.
-- Use your own narration or generate speech with ElevenLabs.
+- Chat guided first run for brand, language, narration preference, and avatar.
+- Use your own narration or connected ElevenLabs, Higgsfield, or Suno capabilities.
 - Create and review word timed storyboards before rendering.
 - Use the bundled Emo robot presenter or prepare a custom sprite pack.
 - Start with the bundled presenter, a clean motion-graphics style, and phrase captions in a speech bubble beside the avatar.
@@ -15,7 +15,9 @@ Explainer Studio is an agent plugin for creating narrated explainer videos from 
 - Render landscape or portrait video through AIVEE and run basic media checks.
 - Keep prior narration and renders intact when creating a new take.
 
-Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription and ElevenLabs require their optional runtime and account credentials.
+Provider voice generation runs through the connected capabilities of Codex or Claude Code; Studio does not collect provider API keys. Setup defaults to asking which source to use each time, or you can save a preferred provider. ElevenLabs, Higgsfield, and Suno may consume paid credits, so check the selected provider and account costs before each generation. See the [voiceover skill](skills/voiceover/SKILL.md) and provider guides for setup. User-recorded narration is also supported. Local text-to-speech is not included yet.
+
+Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription requires its optional runtime.
 
 For creative planning and animation authoring, our project recommendations are:
 
@@ -36,7 +38,7 @@ Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or
 python scripts/explainer.py bootstrap
 ```
 
-For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, reuses a compatible global AIVEE CLI, or runs `npm install --global aivee@latest` when AIVEE is missing. AIVEE is shared globally with other Studios; Studio does not keep a private copy or silently replace an incompatible global installation. If an installed version is incompatible, update it with `npm install --global aivee@latest` and rerun setup. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, reuses a compatible global AIVEE CLI, or runs `npm install --global aivee@latest` when AIVEE is missing. AIVEE is shared globally with other Studios; Studio does not keep a private copy or silently replace an incompatible global installation. If an installed version is incompatible, update it with `npm install --global aivee@latest` and rerun setup. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, ask-before-generation voice selection, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider access is managed by the active Codex or Claude Code host and is not saved to the profile.
 
 ## Install and use in chat
 
@@ -64,7 +66,7 @@ For local plugin development, Claude Code also supports `claude --plugin-dir <pa
 
 ## 🎙️ Voice and avatars
 
-Choose a recording you attach to chat or an ElevenLabs voice. For generated narration, set `ELEVENLABS_API_KEY` in the environment and provide a voice ID. No voice clone is required.
+Choose a recording you attach to chat or a connected provider capability for ElevenLabs, Higgsfield, or Suno. Setup lets you save a preferred source or ask each time. Provider accounts and credits are managed by those services; Studio does not store provider API keys. No voice clone is required.
 
 Use the bundled **Emo** robot avatar by default, choose the **Waren** sample avatar, or install a sprite pack you own. The free sample packs are in [`library/avatars`](library/avatars) and each includes an MIT license. Emo includes four poses, matching blink frames, and five screen-mouth states. Waren is based on the creator's supplied avatar references and includes four poses and five mouth states. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
 

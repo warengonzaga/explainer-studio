@@ -22,6 +22,15 @@ def load_profile() -> dict:
     return read_json(path)
 
 
+def show_profile(_) -> None:
+    profile = load_profile().copy()
+    if "voice_provider_default" not in profile:
+        profile["voice_provider_default"] = "elevenlabs" if profile.get("voice_route") == "elevenlabs" else "ask"
+    profile.pop("voice_route", None)
+    profile.pop("voice_id", None)
+    print(json.dumps(profile, indent=2))
+
+
 def _replace_avatar_pack(source: Path, destination: Path) -> Path | None:
     from .avatar import copy_pack, validate_pack
 
@@ -118,14 +127,11 @@ def setup(args) -> None:
     aivee_home = Path(args.home or old.get("aivee_home") or "~/AIVEE").expanduser().resolve()
     workspace = setup_aivee_home(aivee_home)
     brand = args.brand or old.get("brand") or "Explainer Studio"
-    voice_route = args.voice_route or old.get("voice_route") or "recording"
-    if voice_route not in {"recording", "elevenlabs"}:
-        raise ProjectError("voice route must be recording or elevenlabs")
-    voice_id = args.voice_id or old.get("voice_id")
-    if voice_route == "elevenlabs" and not voice_id:
-        raise ProjectError("ElevenLabs requires --voice-id (API key stays in ELEVENLABS_API_KEY)")
-    if voice_id and not re.fullmatch(r"[A-Za-z0-9_-]+", voice_id):
-        raise ProjectError("voice ID contains unsupported characters")
+    voice_provider_default = args.voice_provider_default or old.get("voice_provider_default")
+    if not voice_provider_default:
+        voice_provider_default = "elevenlabs" if old.get("voice_route") == "elevenlabs" else "ask"
+    if voice_provider_default not in {"ask", "recording", "elevenlabs", "higgsfield", "suno"}:
+        raise ProjectError("voice provider default must be ask, recording, elevenlabs, higgsfield, or suno")
     rhubarb_path = args.rhubarb_path or old.get("rhubarb_path")
     if rhubarb_path:
         rhubarb_file = Path(rhubarb_path).expanduser()
@@ -193,7 +199,7 @@ def setup(args) -> None:
         raise ProjectError("custom avatar requires --avatar-pack")
     profile = {
         "version": 1, "brand": brand, "language": args.language or old.get("language") or "en",
-        "voice_route": voice_route, "voice_id": voice_id,
+        "voice_provider_default": voice_provider_default,
         "avatar": avatar, "avatar_name": avatar_name, "avatar_pack": avatar_pack,
         "rhubarb_path": str(Path(rhubarb_path).expanduser().resolve()) if rhubarb_path else None,
         "aivee_home": str(aivee_home), "aivee_workspace": workspace,
@@ -563,55 +569,6 @@ def approve(args) -> None:
     print(f"storyboard approved: {data / 'storyboard.json'}")
 
 
-def synthesize(args) -> None:
-    import urllib.error
-    import urllib.request
-
-    root = Path(args.project).resolve()
-    data = studio_data(root)
-    project = read_json(data / "project.json")
-    profile = load_profile()
-    if profile["voice_route"] != "elevenlabs":
-        raise ProjectError("profile voice route is recording; run setup again to choose ElevenLabs")
-    key = os.environ.get("ELEVENLABS_API_KEY")
-    if not key:
-        raise ProjectError("ELEVENLABS_API_KEY is not set in the environment")
-    if project.get("voice") != "assets/voice.mp3":
-        raise ProjectError("voice already exists; create a new project for a new take")
-    script = (data / "script.txt").read_text(encoding="utf-8").strip()
-    if not script:
-        raise ProjectError("script.txt is empty")
-    import json
-    payload = json.dumps({"text": script, "model_id": "eleven_multilingual_v2"}).encode("utf-8")
-    request = urllib.request.Request(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{profile['voice_id']}",
-        data=payload,
-        headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=180) as response:
-            audio = response.read()
-    except urllib.error.HTTPError as exc:
-        raise ProjectError(f"ElevenLabs returned HTTP {exc.code}; check voice ID, account, and API access") from exc
-    except urllib.error.URLError as exc:
-        raise ProjectError("could not reach ElevenLabs") from exc
-    if len(audio) < 1024:
-        raise ProjectError("ElevenLabs returned an unexpectedly small audio file")
-    from .engine import register_asset
-
-    work = data / ".work"
-    work.mkdir(parents=True, exist_ok=True)
-    target = work / f"narration-{uuid.uuid4().hex}{'.mp3'}"
-    try:
-        target.write_bytes(audio)
-        project["voice"] = register_asset(root, target, "narration")["path"]
-        write_json(data / "project.json", project)
-    finally:
-        target.unlink(missing_ok=True)
-    print(f"narration generated: {root / project['voice']}")
-
-
 def check(args) -> None:
     import json
     from .timing import validate_storyboard
@@ -692,8 +649,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("setup", help="save a creator profile")
     p.add_argument("--brand")
     p.add_argument("--language")
-    p.add_argument("--voice-route", choices=["recording", "elevenlabs"])
-    p.add_argument("--voice-id")
+    p.add_argument("--voice-provider-default", choices=["ask", "recording", "elevenlabs", "higgsfield", "suno"])
     p.add_argument("--avatar", choices=["emo", "built-in", "custom"])
     p.add_argument("--avatar-pack")
     p.add_argument("--rhubarb-path")
@@ -706,7 +662,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--force", action="store_true")
     p.set_defaults(handler=setup)
     p = sub.add_parser("profile", help="show saved non-secret settings")
-    p.set_defaults(handler=lambda a: print(__import__("json").dumps(load_profile(), indent=2)))
+    p.set_defaults(handler=show_profile)
     p = sub.add_parser("init", help="create a film project")
     p.add_argument("project")
     p.add_argument("--title")
@@ -740,9 +696,6 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("avatar-validate", help="validate a standardized avatar pack folder")
     p.add_argument("pack")
     p.set_defaults(handler=avatar_validate_command)
-    p = sub.add_parser("synthesize", help="generate narration with configured ElevenLabs voice")
-    p.add_argument("project")
-    p.set_defaults(handler=synthesize)
     p = sub.add_parser("transcribe", help="generate word timing from narration")
     p.add_argument("project")
     p.add_argument("--model", default="small")
