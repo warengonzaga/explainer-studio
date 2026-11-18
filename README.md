@@ -15,7 +15,7 @@ Explainer Studio is an agent plugin for creating narrated explainer videos from 
 - Render landscape or portrait video through AIVEE and run basic media checks.
 - Keep prior narration and renders intact when creating a new take.
 
-Provider voice generation runs through the connected capabilities of Codex or Claude Code; Studio does not collect provider API keys. Setup defaults to asking which source to use each time, or you can save a preferred provider. ElevenLabs, Higgsfield, and Suno may consume paid credits, so check the selected provider and account costs before each generation. See the [voiceover skill](skills/voiceover/SKILL.md) and provider guides for setup. User-recorded narration is also supported. Local text-to-speech is not included yet.
+Supported narration sources are a recording file supplied by the user, or a connected ElevenLabs, Higgsfield, or Suno capability in Codex or Claude Code. Studio guides provider use but does not call their APIs directly or store provider credentials. Setup defaults to asking which source to use each time, or you can save a preferred source. Provider generation may consume paid credits; check the selected provider's account costs before generating. See the [voiceover skill](skills/voiceover/SKILL.md) and provider guides for setup. Local text-to-speech is not supported yet.
 
 Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription requires its optional runtime.
 
@@ -66,7 +66,7 @@ For local plugin development, Claude Code also supports `claude --plugin-dir <pa
 
 ## 🎙️ Voice and avatars
 
-Choose a recording you attach to chat or a connected provider capability for ElevenLabs, Higgsfield, or Suno. Setup lets you save a preferred source or ask each time. Provider accounts and credits are managed by those services; Studio does not store provider API keys. No voice clone is required.
+Choose a narration recording file you provide, or a connected provider capability for ElevenLabs, Higgsfield, or Suno. Setup lets you save a preferred source or ask each time. Provider availability depends on the active Codex or Claude Code host; accounts and credits are managed by those services. Studio does not store provider API keys. Local text-to-speech is not supported yet. No voice clone is required.
 
 Use the bundled **Emo** robot avatar by default, choose the **Waren** sample avatar, or install a sprite pack you own. The free sample packs are in [`library/avatars`](library/avatars) and each includes an MIT license. Emo includes four poses, matching blink frames, and five screen-mouth states. Waren is based on the creator's supplied avatar references and includes four poses and five mouth states. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
 
@@ -95,4 +95,4 @@ Studio guides story, narration timing, storyboard review, and explainer-specific
 
 ## 📄 License
 
-Explainer Studio is licensed under the [MIT License](LICENSE).
+Explainer Studio is licensed under the [GNU General Public License v3.0 only](LICENSE). The avatar packs in [`library/avatars`](library/avatars) are separately licensed under MIT; each pack includes its own `LICENSE` file and manifest entry. Third-party tools, models, and media keep their own licenses and notices. AIVEE is an independent dependency and retains its MIT license.
