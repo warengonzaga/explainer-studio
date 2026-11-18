@@ -95,4 +95,4 @@ Studio guides story, narration timing, storyboard review, and explainer-specific
 
 ## 📄 License
 
-Explainer Studio is licensed under the [MIT License](LICENSE).
+Explainer Studio is licensed under the [GNU General Public License v3.0 only](LICENSE). The avatar packs in [`library/avatars`](library/avatars) are separately licensed under MIT; each pack includes its own `LICENSE` file and manifest entry. Third-party tools, models, and media keep their own licenses and notices. AIVEE is an independent dependency and retains its MIT license.
