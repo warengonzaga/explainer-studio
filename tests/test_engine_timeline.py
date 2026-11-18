@@ -11,12 +11,41 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from explainer_studio.audio import map_phonetic_cues, phonetic_mouth_track
-from explainer_studio.common import ProjectError
-from explainer_studio.engine import avatar_intervals
+from explainer_studio.common import ProjectError, file_hash
+from explainer_studio.engine import _register_render_asset, avatar_intervals
 from explainer_studio.timing import validate_words
 
 
 class EngineTimelineTest(unittest.TestCase):
+    def test_render_assets_reuse_stable_ids_and_relink_changed_media(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            source = project / "avatar.png"
+            source.write_bytes(b"first render")
+            assets = {}
+
+            def engine_cli(_command, _cwd, args):
+                asset_id = args[-1] if args[1] == "register" else args[-2]
+                media_path = args[-2] if args[1] == "register" else args[-1]
+                return json.dumps({"id": asset_id, "sha256": file_hash(Path(media_path))})
+
+            with patch("explainer_studio.engine._engine_cli", side_effect=engine_cli) as cli:
+                first = _register_render_asset(["node", "aivee"], project, source, "avatar-id", assets, set())
+                same = _register_render_asset(["node", "aivee"], project, source, "avatar-id", assets, set())
+                source.write_bytes(b"revised render")
+                with self.assertRaisesRegex(ProjectError, "conflicts with existing project media"):
+                    _register_render_asset(["node", "aivee"], project, source, "avatar-id", assets, set())
+                revised = _register_render_asset(
+                    ["node", "aivee"], project, source, "avatar-id", assets,
+                    {"studio-render-avatar-id-png"},
+                )
+
+        expected_id = "studio-render-avatar-id-png"
+        self.assertEqual(first["id"], expected_id)
+        self.assertEqual(same["id"], expected_id)
+        self.assertEqual(revised["id"], expected_id)
+        self.assertEqual([call.args[2][1] for call in cli.call_args_list], ["register", "relink"])
+
     def test_word_timing_validation_rejects_negative_nonfinite_and_out_of_range(self):
         for word in (
             {"text": "hello", "start": -0.1, "end": 0.2},
