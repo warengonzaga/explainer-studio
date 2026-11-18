@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -11,7 +12,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from .common import ProjectError, command, file_hash, probe_duration, project_file, read_json, studio_home, write_json
+from .common import ProjectError, command, file_hash, probe_duration, project_file, read_json, studio_data, studio_file, studio_home, write_json
 
 
 def load_profile() -> dict:
@@ -21,10 +22,18 @@ def load_profile() -> dict:
     return read_json(path)
 
 
+def show_profile(_) -> None:
+    profile = load_profile().copy()
+    if "voice_provider_default" not in profile:
+        profile["voice_provider_default"] = "elevenlabs" if profile.get("voice_route") == "elevenlabs" else "ask"
+    profile.pop("voice_route", None)
+    profile.pop("voice_id", None)
+    print(json.dumps(profile, indent=2))
+
+
 def _replace_avatar_pack(source: Path, destination: Path) -> Path | None:
     from .avatar import copy_pack, validate_pack
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
     stage = destination.with_name(f"{destination.name}.stage-{uuid.uuid4().hex}")
     backup = destination.with_name(f"{destination.name}.backup-{uuid.uuid4().hex}")
     try:
@@ -83,6 +92,14 @@ def avatar_preview_pack_command(args) -> None:
     print(preview_pack(Path(args.pack).resolve(), Path(args.output).resolve()))
 
 
+def avatar_validate_command(args) -> None:
+    from .avatar import validate_pack
+
+    pack = Path(args.pack).expanduser().resolve()
+    manifest = validate_pack(pack.parent, pack.name)
+    print(f"valid avatar pack: {manifest['name']} ({manifest['id']}@{manifest['version']})")
+
+
 def contact_sheet_command(args) -> None:
     from .quality import contact_sheet
 
@@ -101,19 +118,20 @@ def sync_check_command(args) -> None:
 
 
 def setup(args) -> None:
+    from .engine import setup_aivee_home
+
     target = studio_home() / "profile.json"
     old = read_json(target) if target.is_file() else {}
     if target.exists() and not args.force:
         raise ProjectError(f"profile already exists: {target}; use --force after confirming changes")
+    aivee_home = Path(args.home or old.get("aivee_home") or "~/AIVEE").expanduser().resolve()
+    workspace = setup_aivee_home(aivee_home)
     brand = args.brand or old.get("brand") or "Explainer Studio"
-    voice_route = args.voice_route or old.get("voice_route") or "recording"
-    if voice_route not in {"recording", "elevenlabs"}:
-        raise ProjectError("voice route must be recording or elevenlabs")
-    voice_id = args.voice_id or old.get("voice_id")
-    if voice_route == "elevenlabs" and not voice_id:
-        raise ProjectError("ElevenLabs requires --voice-id (API key stays in ELEVENLABS_API_KEY)")
-    if voice_id and not re.fullmatch(r"[A-Za-z0-9_-]+", voice_id):
-        raise ProjectError("voice ID contains unsupported characters")
+    voice_provider_default = args.voice_provider_default or old.get("voice_provider_default")
+    if not voice_provider_default:
+        voice_provider_default = "elevenlabs" if old.get("voice_route") == "elevenlabs" else "ask"
+    if voice_provider_default not in {"ask", "recording", "elevenlabs", "higgsfield", "suno"}:
+        raise ProjectError("voice provider default must be ask, recording, elevenlabs, higgsfield, or suno")
     rhubarb_path = args.rhubarb_path or old.get("rhubarb_path")
     if rhubarb_path:
         rhubarb_file = Path(rhubarb_path).expanduser()
@@ -141,31 +159,50 @@ def setup(args) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         if source != destination:
             shutil.copy2(source, destination)
-    avatar = args.avatar or old.get("avatar") or "built-in"
+    plugin_root = Path(__file__).resolve().parents[2]
+    avatar = args.avatar or old.get("avatar") or "emo"
+    if avatar == "built-in":
+        avatar = "emo"
     avatar_pack = old.get("avatar_pack")
-    avatar_name = old.get("avatar_name", "Built-in")
+    avatar_name = old.get("avatar_name", "Emo")
     avatar_backup = None
-    avatar_destination = studio_home() / "assets" / "avatar"
+    avatar_destination = Path(workspace["avatarPacks"])
     if args.avatar_pack:
         from .avatar import validate_pack
 
         source = Path(args.avatar_pack).expanduser().resolve()
         manifest = validate_pack(source.parent, source.name)
+        avatar_destination = avatar_destination / manifest["id"]
         if source != avatar_destination.resolve():
+            if avatar_destination.exists():
+                raise ProjectError(f"avatar pack id already exists in the AIVEE Library: {manifest['id']}")
             avatar_backup = _replace_avatar_pack(source, avatar_destination)
-        avatar, avatar_pack = "custom", "assets/avatar"
+        avatar, avatar_pack = "custom", str(avatar_destination.resolve())
         avatar_name = manifest.get("name", "Custom")
-    elif args.avatar == "built-in":
-        avatar_pack = None
-        avatar_name = "Built-in"
+    elif avatar == "emo":
+        avatar_pack, avatar_name = None, "Emo"
+    elif avatar == "custom" and avatar_pack:
+        source = Path(avatar_pack).expanduser()
+        source = source if source.is_absolute() else studio_home() / source
+        source = source.resolve()
+        from .avatar import validate_pack
+
+        manifest = validate_pack(source.parent, source.name)
+        avatar_destination = avatar_destination / manifest["id"]
+        if source != avatar_destination.resolve():
+            if avatar_destination.exists():
+                validate_pack(avatar_destination.parent, avatar_destination.name)
+            else:
+                avatar_backup = _replace_avatar_pack(source, avatar_destination)
+        avatar_pack = str(avatar_destination.resolve())
     if avatar == "custom" and not avatar_pack:
         raise ProjectError("custom avatar requires --avatar-pack")
     profile = {
         "version": 1, "brand": brand, "language": args.language or old.get("language") or "en",
-        "voice_route": voice_route, "voice_id": voice_id,
+        "voice_provider_default": voice_provider_default,
         "avatar": avatar, "avatar_name": avatar_name, "avatar_pack": avatar_pack,
         "rhubarb_path": str(Path(rhubarb_path).expanduser().resolve()) if rhubarb_path else None,
-        "output_dir": str(Path(args.output_dir or old.get("output_dir") or "~/Explainer Studio").expanduser().resolve()),
+        "aivee_home": str(aivee_home), "aivee_workspace": workspace,
         "colors": colors, "logo": logo, "cta": args.cta or old.get("cta") or "",
     }
     staged_profile = target.with_name(f"profile.json.stage-{uuid.uuid4().hex}")
@@ -181,6 +218,7 @@ def setup(args) -> None:
     if avatar_backup:
         shutil.rmtree(avatar_backup)
     print(f"profile saved: {target}")
+    print(f"AIVEE home: {aivee_home}")
 
 
 def doctor(_) -> None:
@@ -256,7 +294,7 @@ def install_engine(_) -> None:
         raise ProjectError(f"AIVEE installation could not be verified: {detail[-1200:]}")
     manifest_path = Path(package_root) / "package.json"
     version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
-    print(f"AIVEE {version} ready: {package_root}")
+    print(f"AIVEE {version} ready from the global npm installation: {package_root}")
 
 
 def engine_command(args) -> int:
@@ -272,35 +310,32 @@ def engine_command(args) -> int:
 
 
 def init(args) -> None:
-    from .avatar import copy_pack
+    from .engine import create_aivee_project, register_asset
 
     profile = load_profile()
-    root = Path(args.project).expanduser().resolve()
-    if root.exists():
-        raise ProjectError(f"project already exists: {root}")
     for label in ("voice", "script"):
         value = getattr(args, label)
         if value:
             source = Path(value).expanduser().resolve()
             if not source.is_file():
                 raise ProjectError(f"{label} file not found: {source}")
-    root.mkdir(parents=True)
-    (root / "assets").mkdir()
-    (root / "renders").mkdir()
+    duration = probe_duration(Path(args.voice).expanduser().resolve()) if args.voice else 10
+    result = create_aivee_project(Path(profile["aivee_home"]), args.project, duration)
+    root = Path(result["project"]).resolve()
+    data = Path(result["studioData"]).resolve()
     voice = "assets/voice.mp3"
     if args.voice:
         source = Path(args.voice).expanduser().resolve()
         if not source.is_file():
             raise ProjectError(f"voice file not found: {source}")
-        voice = f"assets/voice{source.suffix.lower()}"
-        shutil.copy2(source, root / voice)
+        voice = register_asset(root, source, "narration")["path"]
     if args.script:
         source = Path(args.script).expanduser().resolve()
         if not source.is_file():
             raise ProjectError(f"script file not found: {source}")
-        shutil.copy2(source, root / "script.txt")
+        shutil.copy2(source, data / "script.txt")
     else:
-        (root / "script.txt").write_text("", encoding="utf-8")
+        (data / "script.txt").write_text("", encoding="utf-8")
     project = {
         "version": 1, "title": args.title or root.name, "brand": profile["brand"],
         "language": profile["language"], "voice": voice, "avatar_pack": None,
@@ -310,97 +345,187 @@ def init(args) -> None:
     if profile.get("logo"):
         source = studio_home() / profile["logo"]
         if source.is_file():
-            project["logo"] = "assets/" + source.name
-            shutil.copy2(source, root / project["logo"])
+            project["logo"] = register_asset(root, source, "studio-logo")["path"]
     if profile.get("avatar_pack"):
-        source = studio_home() / profile["avatar_pack"]
+        source = Path(profile["avatar_pack"])
         if not source.is_dir():
             raise ProjectError(f"saved avatar pack not found: {source}")
-        copy_pack(source, root / "assets" / "avatar")
-        project["avatar_pack"] = "assets/avatar"
-    write_json(root / "project.json", project)
+        project["avatar_pack"] = str(source.resolve())
+    write_json(data / "project.json", project)
     print(f"project created: {root}")
 
 
 def attach_voice(args) -> None:
+    from .engine import register_asset
+
     root = Path(args.project).resolve()
-    project = read_json(root / "project.json")
+    data = studio_data(root)
+    project = read_json(data / "project.json")
     source = Path(args.file).expanduser().resolve()
     if not source.is_file():
         raise ProjectError(f"voice file not found: {source}")
     suffix = source.suffix.lower()
     if suffix not in {".mp3", ".wav", ".m4a", ".flac"}:
         raise ProjectError("voice file must be MP3, WAV, M4A, or FLAC")
-    target = root / "assets" / f"voice{suffix}"
-    if target.exists():
-        raise ProjectError(f"voice already exists: {target}; create a new project for a new take")
-    shutil.copy2(source, target)
-    project["voice"] = str(target.relative_to(root)).replace("\\", "/")
-    write_json(root / "project.json", project)
-    print(f"voice attached: {target}")
+    if project.get("voice") != "assets/voice.mp3":
+        raise ProjectError("voice already exists; create a new project for a new take")
+    asset = register_asset(root, source, "narration")
+    project["voice"] = asset["path"]
+    write_json(data / "project.json", project)
+    print(f"voice attached: {root / asset['path']}")
 
 
 def retime(args) -> None:
-    from .timing import build_storyboard, import_words, transcribe, validate_storyboard
+    import hashlib
+    import tempfile
+
+    from .engine import create_aivee_project, list_project_assets, register_asset
+    from .timing import build_storyboard, transcribe, validate_storyboard, validate_words
 
     source = Path(args.project).expanduser().resolve()
-    target = Path(args.new_project).expanduser().resolve()
-    if target == source or target.is_relative_to(source) or source.is_relative_to(target):
-        raise ProjectError("new project must not overlap the source project")
-    if target.exists():
-        raise ProjectError(f"retimed project already exists: {target}")
+    source_data = studio_data(source)
     voice = Path(args.voice).expanduser().resolve()
     if not voice.is_file():
         raise ProjectError(f"new voice file not found: {voice}")
-    old_project = read_json(source / "project.json")
-    old_board = read_json(source / "storyboard.json")
+    old_project = read_json(source_data / "project.json")
+    old_board = read_json(source_data / "storyboard.json")
     validate_storyboard(source, old_board)
-    old_voice = project_file(source, old_project["voice"])
+    profile = load_profile()
+    duration = probe_duration(voice)
+    script = source_data / "script.txt"
+    if not script.is_file():
+        raise ProjectError(f"project script not found: {script}")
+    if args.words:
+        words_source = Path(args.words).expanduser().resolve()
+        preflight_words = read_json(words_source)
+        validate_words(preflight_words, duration)
+    else:
+        preflight_words = None
 
-    def ignore_artifacts(directory: str, names: list[str]) -> set[str]:
-        current = Path(directory).resolve()
-        ignored = set(names) & {"renders", ".work", "engine", "words.json", "storyboard.json"} if current == source else set()
-        if current == old_voice.parent.resolve():
-            ignored.add(old_voice.name)
-        return ignored
+    assets = {}
+    for relative in [old_project.get("logo"), old_project.get("music")]:
+        if relative:
+            assets[relative] = project_file(source, relative)
+    for scene in old_board["scenes"]:
+        references = [scene.get("asset"), *(cue.get("asset") for cue in scene.get("visual_cues", []))]
+        for relative in references:
+            if relative:
+                assets[relative] = project_file(source, relative)
+    for relative, path in assets.items():
+        if not path.is_file():
+            raise ProjectError(f"project asset not found: {path}")
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        target.mkdir()
-    except FileExistsError as exc:
-        raise ProjectError(f"retimed project already exists: {target}") from exc
-    try:
-        shutil.copytree(source, target, ignore=ignore_artifacts, dirs_exist_ok=True)
-        (target / "renders").mkdir(exist_ok=True)
-        new_voice = target / "assets" / f"voice-{uuid.uuid4().hex[:8]}{voice.suffix.lower()}"
-        shutil.copy2(voice, new_voice)
-        project = read_json(target / "project.json")
-        project["voice"] = str(new_voice.relative_to(target)).replace("\\", "/")
-        write_json(target / "project.json", project)
-        if args.words:
-            import_words(target, Path(args.words).expanduser().resolve())
+    project = dict(old_project)
+    if project.get("avatar_pack"):
+        avatar_value = Path(project["avatar_pack"]).expanduser()
+        avatar_source = avatar_value.resolve() if avatar_value.is_absolute() else project_file(source, str(avatar_value))
+        if not avatar_source.is_dir():
+            raise ProjectError(f"avatar pack not found: {avatar_source}")
+        from .avatar import validate_pack
+
+        avatar_manifest = validate_pack(avatar_source.parent, avatar_source.name)
+        avatar_library = Path(profile["aivee_workspace"]["avatarPacks"])
+        avatar_target = avatar_library / avatar_manifest["id"]
+        if not avatar_target.exists():
+            _replace_avatar_pack(avatar_source, avatar_target)
+        validate_pack(avatar_target.parent, avatar_target.name)
+        project["avatar_pack"] = str(avatar_target.resolve())
+
+    # Run transcription and storyboard validation before AIVEE reserves the target slug.
+    with tempfile.TemporaryDirectory(prefix="explainer-retime-") as temporary:
+        preflight = Path(temporary)
+        preflight_data = preflight / "studio-data" / "explainer"
+        preflight_data.mkdir(parents=True)
+        preflight_voice = preflight / "assets" / f"narration{voice.suffix.lower()}"
+        preflight_voice.parent.mkdir(parents=True)
+        shutil.copy2(voice, preflight_voice)
+        preflight_project = {**project, "voice": preflight_voice.relative_to(preflight).as_posix(), "avatar_pack": None}
+        write_json(preflight_data / "project.json", preflight_project)
+        shutil.copy2(script, preflight_data / "script.txt")
+        if preflight_words is not None:
+            write_json(preflight_data / "words.json", preflight_words)
         else:
-            transcribe(target, args.model, args.language)
-        board = build_storyboard(target)
+            transcribe(preflight, args.model, args.language)
+        board = build_storyboard(preflight)
         if len(board["scenes"]) != len(old_board["scenes"]):
             raise ProjectError("retimed scene count differs; review the new storyboard before copying scene choices")
-        for new, old in zip(board["scenes"], old_board["scenes"]):
-            for key in ("headline", "pose", "asset", "visual_label"):
-                if key in old:
-                    new[key] = old[key]
-            old_duration = float(old["end"]) - float(old["start"])
-            new_duration = float(new["end"]) - float(new["start"])
-            if old_duration > 0:
-                new["visual_cues"] = [{
-                    **cue,
-                    "start": float(new["start"]) + (float(cue["start"]) - float(old["start"])) / old_duration * new_duration,
-                    "duration": float(cue["duration"]) / old_duration * new_duration,
-                } for cue in old.get("visual_cues", [])]
-        validate_storyboard(target, board)
-        write_json(target / "storyboard.json", board)
-    except Exception:
-        shutil.rmtree(target, ignore_errors=True)
-        raise
+        words = read_json(preflight_data / "words.json")
+
+    fingerprint_source = {
+        "project": old_project,
+        "storyboard": old_board,
+        "script_sha256": file_hash(script),
+        "voice_sha256": file_hash(voice),
+        "words_sha256": file_hash(words_source) if args.words else None,
+        "model": args.model if not args.words else None,
+        "language": args.language if not args.words else None,
+        "assets": {relative: file_hash(path) for relative, path in assets.items()},
+    }
+    fingerprint = hashlib.sha256(json.dumps(fingerprint_source, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", args.new_project):
+        raise ProjectError("use a lowercase kebab-case project slug")
+    projects = Path(profile["aivee_workspace"]["projects"]).expanduser().resolve()
+    expected_target = projects / args.new_project
+    marker_name = ".explainer-retime.json"
+    if expected_target.is_symlink():
+        raise ProjectError("AIVEE project path must not be a symlink")
+    if expected_target.exists():
+        if expected_target.resolve().parent != projects:
+            raise ProjectError("AIVEE project path must be a direct child of its projects directory")
+        target, data = expected_target.resolve(), studio_data(expected_target.resolve())
+        marker = data / marker_name
+        marker_data = read_json(marker) if marker.is_file() and not marker.is_symlink() else None
+        if not isinstance(marker_data, dict) or marker_data.get("fingerprint") != fingerprint:
+            raise ProjectError(f"AIVEE project already exists: {target}")
+    else:
+        result = create_aivee_project(Path(profile["aivee_home"]), args.new_project, duration)
+        target, data = Path(result["project"]).resolve(), Path(result["studioData"]).resolve()
+        write_json(data / marker_name, {"fingerprint": fingerprint})
+
+    registered_assets = list_project_assets(target).get("assets", [])
+    asset_paths = {}
+
+    def register_or_reuse(path: Path, asset_id: str) -> str:
+        digest = file_hash(path)
+        existing = next((asset for asset in registered_assets if asset.get("id") == asset_id), None)
+        if existing:
+            if existing.get("sha256") != digest:
+                raise ProjectError(f"incomplete retime has a conflicting registered asset: {asset_id}")
+            return existing["path"]
+        asset = register_asset(target, path, asset_id)
+        registered_assets.append(asset)
+        return asset["path"]
+
+    project["voice"] = register_or_reuse(voice, "narration")
+
+    def copy_asset(relative: str | None) -> str | None:
+        if relative is None:
+            return None
+        if relative not in asset_paths:
+            asset_id = "source-" + hashlib.sha256(relative.encode()).hexdigest()[:10]
+            asset_paths[relative] = register_or_reuse(assets[relative], asset_id)
+        return asset_paths[relative]
+
+    for field in ("logo", "music"):
+        project[field] = copy_asset(project.get(field))
+    write_json(data / "project.json", project)
+    shutil.copy2(script, data / "script.txt")
+    write_json(data / "words.json", words)
+    for new, old in zip(board["scenes"], old_board["scenes"]):
+        for key in ("headline", "pose", "asset", "visual_label"):
+            if key in old:
+                new[key] = copy_asset(old[key]) if key == "asset" else old[key]
+        old_duration = float(old["end"]) - float(old["start"])
+        new_duration = float(new["end"]) - float(new["start"])
+        if old_duration > 0:
+            new["visual_cues"] = [{
+                **cue, "asset": copy_asset(cue["asset"]),
+                "start": float(new["start"]) + (float(cue["start"]) - float(old["start"])) / old_duration * new_duration,
+                "duration": float(cue["duration"]) / old_duration * new_duration,
+            } for cue in old.get("visual_cues", [])]
+    validate_storyboard(target, board)
+    write_json(studio_file(target, "storyboard.json"), board)
+    (data / marker_name).unlink(missing_ok=True)
     print(f"retimed project created: {target}; review and approve the new storyboard")
 
 
@@ -411,18 +536,20 @@ def attach_avatar(args) -> None:
     source = Path(args.pack).expanduser().resolve()
     if not source.is_dir():
         raise ProjectError(f"avatar pack not found: {source}")
-    target = root / "assets" / "avatar"
+    profile = load_profile()
+    library = Path(profile["aivee_workspace"]["avatarPacks"])
+    manifest = validate_pack(source.parent, source.name)
+    target = library / manifest["id"]
     if target.exists():
-        raise ProjectError(f"avatar pack already exists: {target}")
-    copy_pack(source, target)
-    try:
-        validate_pack(root, "assets/avatar")
-    except Exception:
-        shutil.rmtree(target)
-        raise
-    project = read_json(root / "project.json")
-    project["avatar_pack"] = "assets/avatar"
-    write_json(root / "project.json", project)
+        if source.resolve() != target.resolve():
+            raise ProjectError(f"avatar pack id already exists in the AIVEE library: {target}")
+        validate_pack(target.parent, target.name)
+    else:
+        _replace_avatar_pack(source, target)
+    data = studio_data(root)
+    project = read_json(data / "project.json")
+    project["avatar_pack"] = str(target.resolve())
+    write_json(data / "project.json", project)
     print(f"avatar attached: {target}")
 
 
@@ -430,55 +557,16 @@ def approve(args) -> None:
     from .timing import storyboard_hash, validate_storyboard
 
     root = Path(args.project).resolve()
-    board = read_json(root / "storyboard.json")
+    data = studio_data(root)
+    board = read_json(data / "storyboard.json")
     if not isinstance(board.get("source"), dict):
         board["source"] = {}
-    board["source"]["words_sha256"] = file_hash(root / "words.json")
+    board["source"]["words_sha256"] = file_hash(data / "words.json")
     validate_storyboard(root, board)
     board["approved"] = True
     board["approval_hash"] = storyboard_hash(board)
-    write_json(root / "storyboard.json", board)
-    print(f"storyboard approved: {root / 'storyboard.json'}")
-
-
-def synthesize(args) -> None:
-    import urllib.error
-    import urllib.request
-
-    root = Path(args.project).resolve()
-    project = read_json(root / "project.json")
-    profile = load_profile()
-    if profile["voice_route"] != "elevenlabs":
-        raise ProjectError("profile voice route is recording; run setup again to choose ElevenLabs")
-    key = os.environ.get("ELEVENLABS_API_KEY")
-    if not key:
-        raise ProjectError("ELEVENLABS_API_KEY is not set in the environment")
-    target = project_file(root, project["voice"])
-    if target.exists():
-        raise ProjectError(f"voice already exists: {target}")
-    script = (root / "script.txt").read_text(encoding="utf-8").strip()
-    if not script:
-        raise ProjectError("script.txt is empty")
-    import json
-    payload = json.dumps({"text": script, "model_id": "eleven_multilingual_v2"}).encode("utf-8")
-    request = urllib.request.Request(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{profile['voice_id']}",
-        data=payload,
-        headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=180) as response:
-            audio = response.read()
-    except urllib.error.HTTPError as exc:
-        raise ProjectError(f"ElevenLabs returned HTTP {exc.code}; check voice ID, account, and API access") from exc
-    except urllib.error.URLError as exc:
-        raise ProjectError("could not reach ElevenLabs") from exc
-    if len(audio) < 1024:
-        raise ProjectError("ElevenLabs returned an unexpectedly small audio file")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(audio)
-    print(f"narration generated: {target}")
+    write_json(data / "storyboard.json", board)
+    print(f"storyboard approved: {data / 'storyboard.json'}")
 
 
 def check(args) -> None:
@@ -486,10 +574,11 @@ def check(args) -> None:
     from .timing import validate_storyboard
 
     root = Path(args.project).resolve()
-    project = read_json(root / "project.json")
+    data = studio_data(root)
+    project = read_json(data / "project.json")
     voice = project_file(root, project["voice"])
     duration = probe_duration(voice)
-    board = read_json(root / "storyboard.json")
+    board = read_json(data / "storyboard.json")
     validate_storyboard(root, board, duration)
     output = Path(args.video).resolve()
     if not output.is_file():
@@ -552,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("bootstrap", help="create the managed Studio Python environment")
     p.add_argument("--transcribe", action="store_true", help="also install optional faster-whisper dependencies")
     p.set_defaults(handler=bootstrap)
-    p = sub.add_parser("install-engine", help="install or verify AIVEE for this Studio profile")
+    p = sub.add_parser("install-engine", help="install AIVEE globally if missing, or verify the shared CLI")
     p.set_defaults(handler=install_engine)
     p = sub.add_parser("engine", help="run an AIVEE CLI command")
     p.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -560,12 +649,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("setup", help="save a creator profile")
     p.add_argument("--brand")
     p.add_argument("--language")
-    p.add_argument("--voice-route", choices=["recording", "elevenlabs"])
-    p.add_argument("--voice-id")
-    p.add_argument("--avatar", choices=["built-in", "custom"])
+    p.add_argument("--voice-provider-default", choices=["ask", "recording", "elevenlabs", "higgsfield", "suno"])
+    p.add_argument("--avatar", choices=["emo", "built-in", "custom"])
     p.add_argument("--avatar-pack")
     p.add_argument("--rhubarb-path")
-    p.add_argument("--output-dir")
+    p.add_argument("--home", help="AIVEE home folder (defaults to ~/AIVEE)")
     p.add_argument("--logo")
     p.add_argument("--cta")
     p.add_argument("--background")
@@ -574,7 +662,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--force", action="store_true")
     p.set_defaults(handler=setup)
     p = sub.add_parser("profile", help="show saved non-secret settings")
-    p.set_defaults(handler=lambda a: print(__import__("json").dumps(load_profile(), indent=2)))
+    p.set_defaults(handler=show_profile)
     p = sub.add_parser("init", help="create a film project")
     p.add_argument("project")
     p.add_argument("--title")
@@ -585,7 +673,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("project")
     p.add_argument("file")
     p.set_defaults(handler=attach_voice)
-    p = sub.add_parser("retime", help="create a new project from a re-recorded take")
+    p = sub.add_parser("retime", help="create a new AIVEE project from a re-recorded take")
     p.add_argument("project")
     p.add_argument("new_project")
     p.add_argument("--voice", required=True)
@@ -605,9 +693,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("pack")
     p.add_argument("--output", required=True)
     p.set_defaults(handler=avatar_preview_pack_command)
-    p = sub.add_parser("synthesize", help="generate narration with configured ElevenLabs voice")
-    p.add_argument("project")
-    p.set_defaults(handler=synthesize)
+    p = sub.add_parser("avatar-validate", help="validate a standardized avatar pack folder")
+    p.add_argument("pack")
+    p.set_defaults(handler=avatar_validate_command)
     p = sub.add_parser("transcribe", help="generate word timing from narration")
     p.add_argument("project")
     p.add_argument("--model", default="small")

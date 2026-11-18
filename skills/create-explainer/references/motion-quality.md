@@ -10,6 +10,13 @@ The creator approved the open-source Reel v6 presentation as Studio's visual qua
 - Highlight the currently spoken word subtly within the bubble when supported. Do not let word emphasis resize text into collisions or make the bubble jump.
 - Let the user replace the avatar, art direction, colors, or caption treatment. Defaults should make a topic-to-storyboard start easy without constraining the approved storyboard.
 
+## Reels framing
+
+- For 1080 × 1920 Reels, keep essential content inside x=100–886 px and y=250–1480 px. Leave the bottom 440 px and top 250 px clear for interface overlays; keep extra clearance on the right for the action rail. These are conservative Studio authoring bounds and should be checked against the target platform preview.
+- Put a short, large hook near the top of the safe area when it helps the story. Use a bold condensed display style as a starting point, not a mandatory font or a repeated title card.
+- If the scene uses lower captions instead of the default avatar speech bubble, use short 1–3 word bursts with white text and a restrained yellow keyword highlight. Keep them above the bottom danger zone and away from the avatar's face and explanatory graphic.
+- Let the presenter extend into reserved overlay space when needed for framing, but keep the face and other essential details visible. Reels controls must not cover the important subject, text, or action.
+
 ## Model recommendations
 
 | Environment | Recommended for best results | Minimum recommended |
@@ -32,7 +39,7 @@ These are project recommendations for story planning, art direction, animation a
 
 ## Native AIVEE composition route
 
-Studio's `visual_cues` and PNG layer manifests support preset staged entrances. When the storyboard needs expressive motion, author a project-specific AIVEE composition using its existing HTML/SVG and GSAP support. Merely staggering parts of a finished diagram does not fulfill object travel, transformations, or drawn-path choreography. Use `python <plugin-root>/scripts/explainer.py engine -- ...` to invoke the managed AIVEE CLI without relying on a repository checkout being on `PATH`.
+Studio's `visual_cues` and PNG layer manifests support preset staged entrances. When the storyboard needs expressive motion, author a project-specific AIVEE composition using its existing HTML/SVG and GSAP support. Merely staggering parts of a finished diagram does not fulfill object travel, transformations, or drawn-path choreography. Use `python <plugin-root>/scripts/explainer.py engine -- ...` to invoke the globally installed AIVEE CLI without relying on a repository checkout being on `PATH`.
 
 1. Create a new AIVEE project or a separate copy of the prior editable project. Preserve source narration, avatar artwork, approved avatar timing, and existing outputs. Give the new project its own metadata and output filename.
 2. Author the visual scene in the AIVEE project's `index.html`, using local assets and the project's GSAP dependency. Build original SVG or HTML objects as independently addressable elements with stable IDs. Use a paused GSAP timeline registered as `window.__timelines.root`, with the root's dimensions and duration matching the AIVEE project.

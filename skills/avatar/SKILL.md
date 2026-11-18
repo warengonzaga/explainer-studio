@@ -1,14 +1,16 @@
 ---
 name: avatar
-description: Add or inspect an original custom presenter for Explainer Studio, including pose images, mouth anchor, contact-sheet review, and project attachment.
+description: Create or inspect standardized layered avatar packs, validate their sprites, and attach approved packs to Explainer Studio projects.
 ---
 
-# Custom avatar
+# Avatar packs
 
-The built-in presenter is drawn by Explainer Studio and requires no outside assets. The repo includes an original sample pack named **Waren** at `assets/avatars/waren`; it is based on the creator's supplied avatar references. For another custom presenter, use images the user owns or has permission to use. If an image generation tool is available, generate original transparent pose images in chat and show them to the user. Otherwise request the pose files as attachments. Do not use the Talking Explainer demo character or its artwork.
+Explainer Studio's default presenter is the original **Emo** robot pack at `library/avatars/emo`. The repo also includes **Waren** as an optional sample pack at `library/avatars/waren`, based on the creator's supplied avatar references. Users can install other packs they own or have permission to use. If an image generation tool is available, create original transparent sprites in chat and show them to the user. Otherwise request the source images as attachments. Keep generated artwork original or use assets the user is authorized to provide; do not reproduce characters or artwork from other projects.
 
-Prepare a pack following [pack.md](references/pack.md). The pack has an idle pose, optional present/point/celebrate poses, a normalized mouth anchor, and optional transparent mouth patches. A single idle pose works but will not visibly switch pose.
+Prepare every user supplied pack using the strict v1 sprite-sheet format in [pack.md](references/pack.md). Each pack includes talking, pointing, and emotion pose sheets, matching talking and emotion eye/mouth sheets, a manifest, README, license or terms, and preview. The bundled legacy assets are not examples of the new user-pack format and must not be rewritten as part of this workflow.
 
-When building an original avatar from image references, use separate pose and face/mouth sheets; effects can be a third optional sheet for separate scene assets. Keep each cell consistent in head size and position, leave clear gutters, and omit labels. Cut each approved cell into its own transparent PNG. Fit mouth patches to each pose (do not assume a single anchor works for every face), add optional closed-eye pose frames for blinking, generate the contact sheet, and show it in chat. Adjust the fit or artwork until every pose/mouth combination looks right; only then use it in a render. This adapts the pose fitting and review-sheet workflow from [Talking Explainer](https://github.com/brewed-ops/talking-explainer) without reusing its code or artwork.
+When creating a pack, follow [pack.md](references/pack.md) and the canonical [v1 format](../../docs/avatar-pack-format.md). Generate separate pose, eye, and mouth sheets; keep pose art free of facial features; record every frame rectangle and the face placements in `manifest.json`. Preserve the same pose-cell dimensions and baseline, and make sure each frame has transparent pixels rather than an opaque background. Use only the exact frame names from the format. Create `preview.png`, inspect the full contact sheet for alignment and consistent facial styling, and fix any bad or missing frames before presenting the pack.
 
-Use `attach-avatar` to copy and validate the pack into the film project. The setup skill must get the user's approval of the avatar review sheet before saving it to their profile.
+Run `explainer avatar-validate <pack-folder>` and attach only packs that pass. Use the supplied manifest schema for required frame names, then the CLI validator for asset paths, image format, frame bounds, and per-frame transparency. Validation does not assess visual quality or rights; inspect the preview and confirm the user has permission to use the assets.
+
+Use `attach-avatar` to validate the pack and install it in the AIVEE Explainer Library. Studio reads and applies the selected pack; AIVEE only receives the resulting media assets. The setup skill must get the user's approval of the avatar review sheet before saving it to the profile.

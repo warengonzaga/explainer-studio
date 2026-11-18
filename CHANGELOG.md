@@ -6,6 +6,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+### Changed
+
+- delegate workspace and project creation plus media registration to AIVEE
+- store Explainer workflow files in AIVEE's project namespace and resolve legacy projects from their existing root layout
 
 ## [0.1.0] - 2026-11-11
 
@@ -22,4 +26,3 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - use generic Engine timelines
 - keep short-form content within safe zones
 - initialize explainer studio
-

@@ -2,20 +2,22 @@
 
 ## 🎬 Overview
 
-Explainer Studio is a local plugin for making narrated explainer videos from Codex or Claude Code chat. It guides you from topic and script through voice timing, storyboard review, preview, and MP4 delivery. Studio owns the explainer workflow and avatar assets; the generic [AI Video Editing Engine](https://github.com/warengonzaga/ai-video-editing-engine) owns final timeline composition and rendering. The implementation and bundled presenter are original; [Talking Explainer](https://github.com/brewed-ops/talking-explainer) informed the workflow.
+Explainer Studio is an agent plugin for creating narrated explainer videos from Codex or Claude Code. It guides the work from topic and script through narration timing, storyboard review, preview, and MP4 delivery. Studio owns the explainer workflow and original avatar assets. It depends on [AIVEE](https://github.com/warengonzaga/ai-video-editing-engine) for editable timeline composition and video rendering.
 
 ## ✨ Features
 
-- Chat guided first run for brand, language, voice route, and avatar.
-- Use your own narration or generate speech with ElevenLabs.
+- Chat guided first run for brand, language, narration preference, and avatar.
+- Use your own narration or connected ElevenLabs, Higgsfield, or Suno capabilities.
 - Create and review word timed storyboards before rendering.
-- Use an original geometric presenter or prepare a custom sprite pack.
+- Use the bundled Emo robot presenter or prepare a custom sprite pack.
 - Start with the bundled presenter, a clean motion-graphics style, and phrase captions in a speech bubble beside the avatar.
 - Compose scenes, avatar states, and narration in an editable AIVEE timeline.
 - Render landscape or portrait video through AIVEE and run basic media checks.
 - Keep prior narration and renders intact when creating a new take.
 
-Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription and ElevenLabs require their optional runtime and account credentials.
+Supported narration sources are a recording file supplied by the user, or a connected ElevenLabs, Higgsfield, or Suno capability in Codex or Claude Code. Studio guides provider use but does not call their APIs directly or store provider credentials. Setup defaults to asking which source to use each time, or you can save a preferred source. Provider generation may consume paid credits; check the selected provider's account costs before generating. See the [voiceover skill](skills/voiceover/SKILL.md) and provider guides for setup. Local text-to-speech is not supported yet.
+
+Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription requires its optional runtime.
 
 For creative planning and animation authoring, our project recommendations are:
 
@@ -30,30 +32,43 @@ The visual quality baseline is a deliberately composed scene with readable artwo
 
 ## 🚀 Quick start
 
-Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. When running from a source checkout, bootstrap Studio's managed Python environment:
+Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. Studio uses npm's global AIVEE installation. When running from a source checkout, bootstrap Studio's managed Python environment:
 
 ```bash
 python scripts/explainer.py bootstrap
 ```
 
-For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps its Python dependencies, checks the machine, and installs the supported AIVEE npm package into the Studio user data directory when needed; users do not need to clone the Engine repository or install AIVEE separately. The starter profile defaults to the **Explainer Studio** brand, English, recording voice, built-in geometric avatar, default colors, and `~/Explainer Studio` output. A Rhubarb executable is optional for phonetic mouth cues. Provider keys stay in environment variables and are not saved to the profile.
+For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, reuses a compatible global AIVEE CLI, or runs `npm install --global aivee@latest` when AIVEE is missing. AIVEE is shared globally with other Studios; Studio does not keep a private copy or silently replace an incompatible global installation. If an installed version is incompatible, update it with `npm install --global aivee@latest` and rerun setup. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, ask-before-generation voice selection, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider access is managed by the active Codex or Claude Code host and is not saved to the profile.
 
-For a local checkout, add this repository as a plugin marketplace and install `explainer-studio`:
+## Install and use in chat
+
+### Codex
 
 ```text
-Claude Code: /plugin marketplace add warengonzaga/explainer-studio
-Claude Code: /plugin install explainer-studio@explainer-studio
-Codex:       codex plugin marketplace add warengonzaga/explainer-studio
-Codex:       codex plugin add explainer-studio@explainer-studio
+codex plugin marketplace add warengonzaga/explainer-studio
+codex plugin add explainer-studio@explainer-studio
 ```
 
-Claude Code also supports local development with `claude --plugin-dir <path-to-this-repo>`.
+Open a Codex chat with the plugin enabled and start with **Set up Explainer Studio** (or ask Codex to set it up). After setup, describe the video you want, for example: “Create a 60-second Reel explaining open source.” Codex guides you through the script, narration, storyboard approval, and render review in chat.
+
+### Claude Code
+
+In a Claude Code session, add the marketplace and install the plugin:
+
+```text
+/plugin marketplace add warengonzaga/explainer-studio
+/plugin install explainer-studio@explainer-studio
+```
+
+Run `/explainer-studio:setup` for first-time setup. To make a video, run `/explainer-studio:create-explainer` or describe the video in chat and let the skill guide you through the workflow.
+
+For local plugin development, Claude Code also supports `claude --plugin-dir <path-to-this-repo>`.
 
 ## 🎙️ Voice and avatars
 
-Choose a recording you attach to chat or an ElevenLabs voice. For generated narration, set `ELEVENLABS_API_KEY` in the environment and provide a voice ID. No voice clone is required.
+Choose a narration recording file you provide, or a connected provider capability for ElevenLabs, Higgsfield, or Suno. Setup lets you save a preferred source or ask each time. Provider availability depends on the active Codex or Claude Code host; accounts and credits are managed by those services. Studio does not store provider API keys. Local text-to-speech is not supported yet. No voice clone is required.
 
-Choose the built-in presenter, the bundled **Waren** sample avatar, or a sprite pack you own. The Waren pack is based on the creator's supplied avatar references and includes four poses and five mouth states, with pose-specific mouth fitting for `present` and `celebrate`. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
+Use the bundled **Emo** robot avatar by default, choose the **Waren** sample avatar, or install a sprite pack you own. The free sample packs are in [`library/avatars`](library/avatars) and each includes an MIT license. Emo includes four poses, matching blink frames, and five screen-mouth states. Waren is based on the creator's supplied avatar references and includes four poses and five mouth states. See the [avatar pack guide](skills/avatar/references/pack.md) for manifest and image requirements. Rendering and avatar previews run locally.
 
 ## 🧭 Workflow
 
@@ -61,7 +76,7 @@ Choose the built-in presenter, the bundled **Waren** sample avatar, or a sprite 
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
 3. Review the storyboard and approve it in chat.
 4. Render a preview through AIVEE, request revisions, then render and inspect the final video. AIVEE owns all composition and rendering.
-5. Share the MP4 and Studio project folder; its editable AIVEE project is retained under `engine/video-projects/`.
+5. Share the MP4 and AIVEE-owned project folder; the editable timeline, registered media, renders, and Studio workflow files are kept together in the project. Studio workflow files live under `studio-data/explainer/`.
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
@@ -80,4 +95,4 @@ Studio guides story, narration timing, storyboard review, and explainer-specific
 
 ## 📄 License
 
-Explainer Studio is licensed under the [MIT License](LICENSE).
+Explainer Studio is licensed under the [GNU General Public License v3.0 only](LICENSE). The avatar packs in [`library/avatars`](library/avatars) are separately licensed under MIT; each pack includes its own `LICENSE` file and manifest entry. Third-party tools, models, and media keep their own licenses and notices. AIVEE is an independent dependency and retains its MIT license.

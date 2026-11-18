@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,12 +14,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from .audio import mouth_at, mouth_track, phonetic_mouth_track
-from .common import ProjectError, probe_duration, project_file, read_json, studio_home, write_json
+from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_data, studio_home, write_json
 from .timing import storyboard_hash, validate_storyboard, validate_words
-
-
-AIVEE_VERSION = "0.1.1"
-UNDICI_VERSION = "7.30.2"
 
 
 def _node() -> str:
@@ -43,7 +40,7 @@ def _package_cli(package_root: Path) -> tuple[Path, str] | None:
         manifest = read_json(manifest_path)
     except ProjectError:
         return None
-    if not isinstance(manifest, dict) or manifest.get("name") != "aivee" or manifest.get("version") != AIVEE_VERSION:
+    if not isinstance(manifest, dict) or manifest.get("name") != "aivee":
         return None
     entry = manifest.get("bin")
     entry = entry.get("aivee") if isinstance(entry, dict) else entry
@@ -56,74 +53,68 @@ def _package_cli(package_root: Path) -> tuple[Path, str] | None:
     return cli, str(root)
 
 
-def _installed_aivee(node: str) -> tuple[list[str], str] | None:
+def _npm_global_root() -> Path | None:
     npm = shutil.which("npm")
-    roots = []
-    if npm:
-        try:
-            result = subprocess.run([npm, "root", "-g"], capture_output=True, text=True)
-            if result.returncode == 0 and result.stdout.strip():
-                roots.append(Path(result.stdout.strip()))
-        except OSError:
-            pass
-    runtime = studio_home() / "runtime"
     try:
-        manifest = read_json(runtime / "package.json")
-    except ProjectError:
-        manifest = None
-    if (
-        isinstance(manifest, dict)
-        and manifest.get("dependencies", {}).get("aivee") == AIVEE_VERSION
-        and manifest.get("overrides", {}).get("hyperframes", {}).get("undici") == UNDICI_VERSION
-    ):
-        roots.append(runtime / "node_modules")
-    for modules in roots:
-        resolved = _package_cli(modules / "aivee")
-        if resolved:
-            cli, package_root = resolved
-            command = [node, str(cli)]
-            if _verify_aivee(command):
-                return command, package_root
-    return None
+        result = subprocess.run([npm, "root", "-g"], capture_output=True, text=True) if npm else None
+    except OSError:
+        return None
+    return Path(result.stdout.strip()) if result and result.returncode == 0 and result.stdout.strip() else None
+
+
+def _installed_aivee(node: str) -> tuple[list[str], str] | None:
+    modules = _npm_global_root()
+    resolved = _package_cli(modules / "aivee") if modules else None
+    if not resolved:
+        return None
+    cli, package_root = resolved
+    return [node, str(cli)], package_root
+
+
+def _global_aivee_path() -> Path | None:
+    modules = _npm_global_root()
+    return modules / "aivee" if modules else None
 
 
 def resolve_aivee() -> tuple[list[str], str]:
     node = _node()
     installed = _installed_aivee(node)
-    if installed:
+    if installed and _verify_aivee(installed[0]):
         return installed
-    raise ProjectError(f"AIVEE {AIVEE_VERSION} is not installed; run `explainer install-engine` to install it")
+    if installed:
+        raise ProjectError("The global AIVEE installation is incompatible or missing render requirements; run `npm install --global aivee@latest` and retry")
+    package = _global_aivee_path()
+    if package and package.exists():
+        raise ProjectError(f"A global AIVEE package exists but its CLI is invalid: {package}; repair or remove it before installing AIVEE again")
+    raise ProjectError("AIVEE is not installed; run `explainer install-engine` to install it globally")
 
 
 def ensure_aivee() -> tuple[list[str], str]:
     node = _node()
     installed = _installed_aivee(node)
     if installed:
+        if not _verify_aivee(installed[0]):
+            raise ProjectError("The global AIVEE installation is incompatible or missing render requirements; update it with `npm install --global aivee@latest` and retry")
         return installed
+    package = _global_aivee_path()
+    if package and package.exists():
+        raise ProjectError(f"A global AIVEE package exists but its CLI is invalid: {package}; repair or remove it before installing AIVEE again")
     npm = shutil.which("npm")
     if not npm:
         raise ProjectError("npm is required to install AIVEE; install Node.js 22 or later with npm")
-    runtime = studio_home() / "runtime"
     try:
-        runtime.mkdir(parents=True, exist_ok=True)
-        write_json(runtime / "package.json", {
-            "private": True,
-            "dependencies": {"aivee": AIVEE_VERSION},
-            "overrides": {"hyperframes": {"undici": UNDICI_VERSION}},
-        })
         result = subprocess.run(
-            [npm, "install"],
-            cwd=runtime,
+            [npm, "install", "--global", "aivee@latest"],
             capture_output=True,
             text=True,
         )
     except OSError as exc:
         raise ProjectError("Could not run npm to install AIVEE; check npm permissions and retry") from exc
     if result.returncode:
-        raise ProjectError(f"Could not install AIVEE {AIVEE_VERSION} (npm exit {result.returncode}); check network access and npm configuration")
+        raise ProjectError(f"Could not install AIVEE globally (npm exit {result.returncode}); check network access, npm permissions, and npm configuration")
     installed = _installed_aivee(node)
-    if not installed:
-        raise ProjectError(f"AIVEE {AIVEE_VERSION} installation completed but the CLI could not be found")
+    if not installed or not _verify_aivee(installed[0]):
+        raise ProjectError("AIVEE installation completed but the global CLI is unavailable or incompatible; check npm's global prefix and render requirements")
     return installed
 
 
@@ -134,7 +125,9 @@ def _verify_aivee(command: list[str]) -> bool:
             return False
         capabilities = json.loads(result.stdout)
         return (
-            capabilities.get("render", {}).get("requirementsAvailable") is True
+            capabilities.get("schemaVersion") == 1
+            and capabilities.get("node", {}).get("supported") is True
+            and capabilities.get("render", {}).get("requirementsAvailable") is True
             and capabilities.get("render", {}).get("outputs", {}).get("mp4", {}).get("defaultCodecAvailable") is True
         )
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
@@ -170,6 +163,42 @@ def _engine_cli(command: list[str], cwd: Path, args: list[str], env: dict | None
     return result.stdout.strip()
 
 
+def setup_aivee_home(home: Path) -> dict:
+    command, _ = ensure_aivee()
+    result = _engine_cli(command, Path.home(), ["studio", "setup", "explainer", "--home", str(home)])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid workspace response") from exc
+
+
+def create_aivee_project(home: Path, slug: str, duration: float = 10) -> dict:
+    command, _ = resolve_aivee()
+    result = _engine_cli(command, home, ["studio", "project", "create", "explainer", slug, "--home", str(home), "1920x1080", "60", f"{duration:.6f}"])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid project response") from exc
+
+
+def register_asset(project: Path, source: Path, asset_id: str) -> dict:
+    command, _ = resolve_aivee()
+    result = _engine_cli(command, project, ["asset", "register", str(project), str(source), asset_id])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid asset response") from exc
+
+
+def list_project_assets(project: Path) -> dict:
+    command, _ = resolve_aivee()
+    result = _engine_cli(command, project, ["asset", "list", str(project)])
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as exc:
+        raise ProjectError("AIVEE returned an invalid asset list") from exc
+
+
 def _browser_env(cache_dir: Path) -> dict[str, str]:
     environment = {"HYPERFRAMES_CACHE_DIR": str(cache_dir)}
     configured = os.environ.get("HYPERFRAMES_BROWSER_PATH")
@@ -195,6 +224,28 @@ def _write_engine_timeline(root: Path, path: Path, timeline: dict) -> None:
     result = subprocess.run(["node", "-e", canonicalize, str(path)], cwd=root, capture_output=True, text=True)
     if result.returncode:
         raise ProjectError(f"Could not normalize Engine timeline JSON: {(result.stderr or result.stdout).strip()}")
+
+
+def _register_render_asset(
+    engine_command: list[str], project: Path, source: Path, asset_id: str,
+    assets: dict, owned_asset_ids: set[str],
+) -> dict:
+    safe_id = re.sub(r"[^a-z0-9]+", "-", asset_id.lower()).strip("-") or "asset"
+    extension = re.sub(r"[^a-z0-9]+", "", source.suffix.lower().lstrip(".")) or "media"
+    registered_id = f"studio-render-{safe_id}-{extension}"
+    existing = assets.get(registered_id)
+    if existing and existing.get("sha256") == file_hash(source):
+        asset = existing
+    else:
+        if existing and registered_id not in owned_asset_ids:
+            raise ProjectError(f"render asset ID conflicts with existing project media: {registered_id}")
+        args = (
+            ["asset", "relink", str(project), registered_id, str(source)]
+            if existing else ["asset", "register", str(project), str(source), registered_id]
+        )
+        asset = json.loads(_engine_cli(engine_command, project, args))
+        assets[registered_id] = asset
+    return {**asset, "id": registered_id}
 
 
 def _visual_layers(root: Path, cue: dict, frame_size: tuple[int, int], asset_dir: Path) -> list[tuple[Path, dict]]:
@@ -264,7 +315,7 @@ def _visual_layers(root: Path, cue: dict, frame_size: tuple[int, int], asset_dir
 
 
 def _check_reels_box(x: float, y: float, width: float, height: float, label: str) -> None:
-    if x < 0.067 - 1e-6 or y < 0.13 - 1e-6 or x + width > 0.82 + 1e-6 or y + height > 0.87 + 1e-6:
+    if x < 0.093 - 1e-6 or y < 0.13 - 1e-6 or x + width > 0.82 + 1e-6 or y + height > 0.771 + 1e-6:
         raise ProjectError(f"Reels {label} is outside the safe area; reposition it before rendering")
 
 
@@ -273,14 +324,15 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     from .avatar import _is_blinking, avatar_box, draw_avatar
 
     root = root.resolve()
-    project = read_json(root / "project.json")
-    board = read_json(root / "storyboard.json")
+    data = studio_data(root)
+    project = read_json(data / "project.json")
+    board = read_json(data / "storyboard.json")
     if not board.get("approved") or board.get("approval_hash") != storyboard_hash(board):
         raise ProjectError("storyboard is not approved; review it in chat, then run `explainer approve <project>`")
     voice = project_file(root, project["voice"])
     duration = probe_duration(voice)
     validate_storyboard(root, board, duration)
-    words = read_json(root / "words.json")
+    words = read_json(data / "words.json")
     validate_words(words, duration)
     if output.exists():
         raise ProjectError(f"output already exists: {output}")
@@ -294,10 +346,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     if width < 320 or height < 240 or fps < 1 or fps > 60:
         raise ProjectError("invalid project resolution or frame rate")
 
-    scratch_root = root / ".work"
+    scratch_root = data / ".work"
     scratch_root.mkdir(parents=True, exist_ok=True)
-    engine_workspace = root / "engine"
-    engine_workspace.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="engine-export-", dir=scratch_root) as temporary:
         temporary = Path(temporary)
         scenes = board["scenes"]
@@ -321,9 +371,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             sprite.save(path)
             avatar_paths[(pose, mouth, blinking)] = path
 
-        slug = f"studio-{uuid4().hex[:12]}"
-        project_path = engine_workspace / "video-projects" / slug
-        _engine_cli(engine_command, engine_workspace, ["project", "create", slug, f"{width}x{height}", str(fps), f"{duration:.6f}"])
+        project_path = root
         narration = temporary / f"studio-narration{voice.suffix.lower()}"
         shutil.copy2(voice, narration)
         visual_records = []
@@ -355,11 +403,24 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         if logo_path:
             asset_records.append((logo_path, "studio-logo"))
         asset_records.extend((source, asset_id) for asset_id, source, _ in visual_records)
-        for path, asset_id in dict.fromkeys(asset_records):
-            _engine_cli(engine_command, project_path, ["asset", "register", str(project_path), str(path), asset_id])
-
+        render_assets = {}
         timeline_path = project_path / "timeline.json"
         timeline = read_json(timeline_path)
+        owned_asset_ids = {
+            clip["assetId"] for track in timeline.get("tracks", [])
+            if track.get("id", "").startswith("studio-")
+            for clip in track.get("clips", []) if isinstance(clip.get("assetId"), str)
+        }
+        asset_manifest = json.loads(_engine_cli(engine_command, project_path, ["asset", "list", str(project_path)]))
+        registered_assets = {
+            asset["id"]: asset for asset in asset_manifest.get("assets", [])
+            if isinstance(asset, dict) and isinstance(asset.get("id"), str)
+        }
+        for path, asset_id in dict.fromkeys(asset_records):
+            render_assets[asset_id] = _register_render_asset(
+                engine_command, project_path, path, asset_id, registered_assets, owned_asset_ids,
+            )
+
         transcript_path = temporary / "studio-transcript.json"
         type_scale = min(width / 1080, height / 1920)
         is_portrait = height > width
@@ -408,7 +469,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         brand_clip = {
             "id": "studio-brand", "timelineStart": 0, "durationSeconds": duration,
             "text": project.get("brand", "Explainer Studio"),
-            "x": 0.08 if is_portrait else 0.025, "y": 0.135 if is_portrait else 0.03,
+            "x": 0.1 if is_portrait else 0.025, "y": 0.135 if is_portrait else 0.03,
             "width": 0.28 if is_portrait else 0.24, "height": 0.04,
             "fontSize": max(8, round(24 * type_scale)), "fontWeight": 700,
             "color": colors.get("ink", "#172236"), "backgroundColor": "transparent",
@@ -428,7 +489,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 "id": f"scene-heading-{index + 1:02d}", "timelineStart": float(scene["start"]),
                 "durationSeconds": float(scene["end"]) - float(scene["start"]),
                 "text": scene.get("visual_label") or scene["headline"],
-                "x": 0.08, "y": 0.16, "width": 0.72 if is_portrait else 0.82, "height": 0.08,
+                "x": 0.1 if is_portrait else 0.08, "y": 0.16, "width": 0.72 if is_portrait else 0.82, "height": 0.08,
                 "fontSize": max(8, round(54 * type_scale)), "fontWeight": 800, "color": colors.get("ink", "#172236"),
                 "backgroundColor": "transparent", "textAlign": "center", "verticalAlign": "center",
                 "keyframes": [
@@ -437,6 +498,9 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 ],
             } for index, scene in enumerate(scenes)],
         }
+        if portrait:
+            for heading in title_track["clips"]:
+                _check_reels_box(heading["x"], heading["y"], heading["width"], heading["height"], "scene heading")
         visual_clips = []
         for index, (visual_id, _, cue) in enumerate(visual_records):
             duration_seconds = float(cue["duration"])
@@ -489,6 +553,10 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             timeline["audioMix"] = {"sidechain": [{"sourceTrackId": "studio-voice", "targetTrackId": "studio-music", "thresholdDb": -34, "ratio": 5, "attackSeconds": 0.02, "releaseSeconds": 0.4}]}
         timeline["audioMastering"] = {"integratedLoudnessLUFS": -16, "truePeakDBTP": -1.5, "loudnessRangeLU": 11}
         timeline["project"]["durationSeconds"] = duration
+        for track in timeline.get("tracks", []):
+            for clip in track.get("clips", []):
+                if clip.get("assetId") in render_assets:
+                    clip["assetId"] = render_assets[clip["assetId"]]["id"]
         _write_engine_timeline(project_path, timeline_path, timeline)
         _engine_cli(engine_command, project_path, ["timeline", "validate", str(timeline_path)])
         output.parent.mkdir(parents=True, exist_ok=True)
