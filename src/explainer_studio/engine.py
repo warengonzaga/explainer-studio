@@ -14,7 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .audio import mouth_at, mouth_track, phonetic_mouth_track
-from .common import ProjectError, probe_duration, project_file, read_json, studio_data, studio_home, write_json
+from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_data, studio_home, write_json
 from .timing import storyboard_hash, validate_storyboard, validate_words
 
 
@@ -226,6 +226,28 @@ def _write_engine_timeline(root: Path, path: Path, timeline: dict) -> None:
         raise ProjectError(f"Could not normalize Engine timeline JSON: {(result.stderr or result.stdout).strip()}")
 
 
+def _register_render_asset(
+    engine_command: list[str], project: Path, source: Path, asset_id: str,
+    assets: dict, owned_asset_ids: set[str],
+) -> dict:
+    safe_id = re.sub(r"[^a-z0-9]+", "-", asset_id.lower()).strip("-") or "asset"
+    extension = re.sub(r"[^a-z0-9]+", "", source.suffix.lower().lstrip(".")) or "media"
+    registered_id = f"studio-render-{safe_id}-{extension}"
+    existing = assets.get(registered_id)
+    if existing and existing.get("sha256") == file_hash(source):
+        asset = existing
+    else:
+        if existing and registered_id not in owned_asset_ids:
+            raise ProjectError(f"render asset ID conflicts with existing project media: {registered_id}")
+        args = (
+            ["asset", "relink", str(project), registered_id, str(source)]
+            if existing else ["asset", "register", str(project), str(source), registered_id]
+        )
+        asset = json.loads(_engine_cli(engine_command, project, args))
+        assets[registered_id] = asset
+    return {**asset, "id": registered_id}
+
+
 def _visual_layers(root: Path, cue: dict, frame_size: tuple[int, int], asset_dir: Path) -> list[tuple[Path, dict]]:
     from PIL import Image
 
@@ -382,14 +404,23 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             asset_records.append((logo_path, "studio-logo"))
         asset_records.extend((source, asset_id) for asset_id, source, _ in visual_records)
         render_assets = {}
-        for path, asset_id in dict.fromkeys(asset_records):
-            safe_id = re.sub(r"[^a-z0-9]+", "-", asset_id.lower()).strip("-")
-            registered_id = f"render-{uuid4().hex[:8]}-{safe_id}"
-            asset = json.loads(_engine_cli(engine_command, project_path, ["asset", "register", str(project_path), str(path), registered_id]))
-            render_assets[asset_id] = {**asset, "id": registered_id}
-
         timeline_path = project_path / "timeline.json"
         timeline = read_json(timeline_path)
+        owned_asset_ids = {
+            clip["assetId"] for track in timeline.get("tracks", [])
+            if track.get("id", "").startswith("studio-")
+            for clip in track.get("clips", []) if isinstance(clip.get("assetId"), str)
+        }
+        asset_manifest = json.loads(_engine_cli(engine_command, project_path, ["asset", "list", str(project_path)]))
+        registered_assets = {
+            asset["id"]: asset for asset in asset_manifest.get("assets", [])
+            if isinstance(asset, dict) and isinstance(asset.get("id"), str)
+        }
+        for path, asset_id in dict.fromkeys(asset_records):
+            render_assets[asset_id] = _register_render_asset(
+                engine_command, project_path, path, asset_id, registered_assets, owned_asset_ids,
+            )
+
         transcript_path = temporary / "studio-transcript.json"
         type_scale = min(width / 1080, height / 1920)
         is_portrait = height > width
