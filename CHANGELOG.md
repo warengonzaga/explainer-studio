@@ -6,10 +6,27 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+
+## [0.2.0] - 2026-11-18
+
+### Added
+
+- add provider voiceover workflows
+- publish v1 Waren and Emo avatar packs (#17)
+- standardize layered avatar packs (#15)
+
 ### Changed
 
-- delegate workspace and project creation plus media registration to AIVEE
-- store Explainer workflow files in AIVEE's project namespace and resolve legacy projects from their existing root layout
+- reuse assets and remove dead validation
+- adopt GPLv3 for Studio
+- clarify Codex and Claude Code setup (#24)
+- use shared global AIVEE CLI (#23)
+- make failed retimes resumable
+- move free packs into library (#20)
+- use AIVEE-owned projects and assets (#18)
+- align avatar guide and document AIVEE dependency (#16)
+- align safe-area guidance and validation
+- make Emo the default presenter
 
 ## [0.1.0] - 2026-11-11
 
