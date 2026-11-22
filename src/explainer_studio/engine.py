@@ -319,6 +319,17 @@ def _check_reels_box(x: float, y: float, width: float, height: float, label: str
         raise ProjectError(f"Reels {label} is outside the safe area; reposition it before rendering")
 
 
+def portrait_regions() -> dict[str, dict[str, float]]:
+    """Default portrait visual, speech bubble, and avatar boxes inside the Reels safe area."""
+    from .avatar import PORTRAIT_AVATAR
+
+    return {
+        "visual": {"x": 0.13, "y": 0.26, "width": 0.66, "height": 0.30},
+        "bubble": {"x": 0.48, "y": 0.59, "width": 0.32, "height": 0.10},
+        "avatar": PORTRAIT_AVATAR,
+    }
+
+
 def ensure_render_allowed(board: dict, *, preview: bool) -> None:
     """Final renders require the current storyboard approval. Draft previews do not."""
     if preview:
@@ -383,6 +394,9 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
 
         avatar_paths = {}
         size = (width, height)
+        if portrait:
+            ax, ay, aw, ah = avatar_box(size)
+            _check_reels_box(ax / width, ay / height, aw / width, ah / height, "avatar")
         for pose, mouth, blinking in {key for key in keys}:
             time = 0.05 if blinking else 1.0
             filename = f"avatar-{pose}-{mouth}-{'blink' if blinking else 'open'}.png"
@@ -397,12 +411,13 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         shutil.copy2(voice, narration)
         visual_records = []
         visual_index = 0
+        visual_region = portrait_regions()["visual"] if portrait else None
         for scene in scenes:
             for cue in scene.get("visual_cues", []):
-                if portrait:
-                    cue = {"x": 0.1, "y": 0.2, "width": 0.68, "height": 0.34, **cue}
-                    x, y = float(cue.get("x", 0.1)), float(cue.get("y", 0.2))
-                    cue_width, cue_height = float(cue.get("width", 0.68)), float(cue.get("height", 0.34))
+                if visual_region is not None:
+                    cue = {**visual_region, **cue}
+                    x, y = float(cue["x"]), float(cue["y"])
+                    cue_width, cue_height = float(cue["width"]), float(cue["height"])
                     _check_reels_box(x, y, cue_width, cue_height, "visual cue")
                 for visual_path, visual_cue in _visual_layers(root, cue, (width, height), temporary):
                     visual_index += 1
@@ -449,10 +464,10 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         caption = project.get("caption", {})
         if not isinstance(caption, dict):
             raise ProjectError("project caption settings must be an object")
+        bubble = portrait_regions()["bubble"] if is_portrait else {"x": 0.31, "y": 0.46, "width": 0.65, "height": 0.12}
         caption_options = {
             "layoutPreset": "speechBubble",
-            "x": 0.36 if is_portrait else 0.31, "y": 0.46,
-            "width": 0.45 if is_portrait else 0.65, "height": 0.1 if is_portrait else 0.12,
+            "x": bubble["x"], "y": bubble["y"], "width": bubble["width"], "height": bubble["height"],
             "fontSize": max(8, round(48 * type_scale)), "wordsPerCaption": 6, "wordsPerLine": 3,
             "wordHighlight": True, "wordHighlightColor": colors.get("accent", "#426BEB"), "wordHighlightAnimation": "pop",
             "color": colors.get("ink", "#172236"), "backgroundColor": "#FFFFFF",
