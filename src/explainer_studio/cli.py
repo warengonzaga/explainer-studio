@@ -776,6 +776,7 @@ def approve(args) -> None:
 def check(args) -> None:
     import json
     from .timing import validate_storyboard
+    from .quality import flicker_check, safe_zone_check, sync_check
 
     root = Path(args.project).resolve()
     data = studio_data(root)
@@ -788,15 +789,14 @@ def check(args) -> None:
     if not output.is_file():
         raise ProjectError(f"video not found: {output}")
     actual = probe_duration(output)
-    if abs(actual - duration) > .25:
-        raise ProjectError(f"video duration {actual:.3f}s differs from voice {duration:.3f}s")
     streams = subprocess.run(
-        [command("ffprobe"), "-v", "error", "-show_streams", "-of", "json", str(output)],
+        [command("ffprobe"), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(output)],
         capture_output=True, text=True, check=True,
     )
-    data = json.loads(streams.stdout)["streams"]
-    video = next((s for s in data if s.get("codec_type") == "video"), None)
-    audio = next((s for s in data if s.get("codec_type") == "audio"), None)
+    probe = json.loads(streams.stdout)
+    stream_data = probe["streams"]
+    video = next((s for s in stream_data if s.get("codec_type") == "video"), None)
+    audio = next((s for s in stream_data if s.get("codec_type") == "audio"), None)
     if not video or not audio:
         raise ProjectError("render needs both video and narration audio streams")
     if video.get("codec_name") != "h264" or audio.get("codec_name") != "aac":
@@ -806,13 +806,48 @@ def check(args) -> None:
     allowed = {full, (round(full[0] / 2), round(full[1] / 2)), (1080, 1920), (540, 960)}
     if size not in allowed:
         raise ProjectError(f"unexpected video size: {size[0]}x{size[1]}")
-    message = f"PASS: H.264/AAC {size[0]}x{size[1]}, {actual:.3f}s voice/video, {len(board['scenes'])} scenes"
+    summary = {
+        "video": str(output), "width": size[0], "height": size[1], "duration": round(actual, 3),
+        "frame_rate": video.get("avg_frame_rate"), "video_codec": video.get("codec_name"),
+        "audio_codec": audio.get("codec_name"), "container": probe.get("format", {}).get("format_name"),
+        "scenes": len(board["scenes"]),
+    }
+    if abs(actual - duration) > .25:
+        raise ResultError(f"video duration {actual:.3f}s differs from voice {duration:.3f}s", summary)
+    flicker = flicker_check(output)
+    safe_zones = safe_zone_check(root, project, board)
+    sync = {"checked": False, "reason": "install faster-whisper or supply rendered word timings to sync-check"}
+    if _sync_check_available():
+        sync = {**sync_check(root, output, getattr(args, "model", "small"), getattr(args, "language", None)), "checked": True}
+        if not sync["pass"]:
+            raise ResultError("rendered speech timing does not match the source voiceover", {**summary, "sync": sync, "flicker": flicker, "safe_zones": safe_zones})
+    if not flicker["pass"]:
+        raise ResultError("single-frame flicker detected in the render", {**summary, "flicker": flicker, "safe_zones": safe_zones, "sync": sync})
+    if not safe_zones["pass"]:
+        raise ResultError("native composition content crosses the portrait safe zones", {**summary, "flicker": flicker, "safe_zones": safe_zones, "sync": sync})
+    message = f"PASS: H.264/AAC {size[0]}x{size[1]}, {actual:.3f}s voice/video, {len(board['scenes'])} scenes; {flicker['frames_scanned']} frames checked"
+    steps = [command_step("contact-sheet", str(root), str(output))]
     emit(
         args,
-        {"video": str(output), "width": size[0], "height": size[1], "duration": round(actual, 3), "scenes": len(board["scenes"])},
-        [command_step("contact-sheet", str(root), str(output))],
+        {**summary, "flicker": flicker, "safe_zones": safe_zones, "sync": sync},
+        steps,
         message,
     )
+
+
+def safe_check_command(args) -> None:
+    from .quality import safe_zone_check
+    from .timing import validate_storyboard
+
+    root = Path(args.project).resolve()
+    data = studio_data(root)
+    project = read_json(data / "project.json")
+    board = read_json(data / "storyboard.json")
+    validate_storyboard(root, board, probe_duration(project_file(root, project["voice"])))
+    report = safe_zone_check(root, project, board)
+    if not report["pass"]:
+        raise ResultError("native composition content crosses the portrait safe zones", report)
+    emit(args, report, [], f"PASS: checked {report['compositions']} native compositions at {report.get('sample_rate', 0)} samples/second")
 
 
 def default_render_name(*, preview: bool, portrait: bool) -> str:
@@ -990,10 +1025,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
     p.set_defaults(handler=render_engine_command)
-    p = add_command(sub, json_flags, "check", help="validate a rendered video's basic timing")
+    p = add_command(sub, json_flags, "check", help="run media, sync, flicker, and portrait safe-zone checks")
     p.add_argument("project")
     p.add_argument("video")
+    p.add_argument("--model", default="small")
+    p.add_argument("--language")
     p.set_defaults(handler=check)
+    p = add_command(sub, json_flags, "safe-check", help="sample native compositions for portrait safe-zone overflow")
+    p.add_argument("project")
+    p.set_defaults(handler=safe_check_command)
     p = add_command(sub, json_flags, "contact-sheet", help="make a scene review sheet from a rendered video")
     p.add_argument("project")
     p.add_argument("video")
