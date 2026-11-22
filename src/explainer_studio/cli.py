@@ -914,7 +914,7 @@ def transcribe_command(args) -> None:
     from .timing import transcribe
 
     root = Path(args.project).resolve()
-    count = transcribe(root, args.model, args.language)
+    count = transcribe(root, args.model, args.language, Path(args.script).resolve() if args.script else None)
     emit(args, {"words": count}, [command_step("storyboard", str(root))], f"{count} words timed")
 
 
@@ -1033,6 +1033,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("project")
     p.add_argument("--model", default="small")
     p.add_argument("--language")
+    p.add_argument("--script", help="use this text file as a transcription hint; defaults to the project script")
     p.set_defaults(handler=transcribe_command)
     p = add_command(sub, json_flags, "import-words", help="use reviewed word timings from JSON")
     p.add_argument("project")

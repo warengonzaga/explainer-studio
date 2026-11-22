@@ -87,6 +87,8 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 `stills <project> --at 0.6,4.9 --sheet` exports full-resolution PNGs at the requested seconds from the latest final render (or latest preview if no final exists). Pass `--video <path>` to choose a specific render, `--output <directory>` to choose a destination, and `--sheet` to add a timestamp-labeled contact sheet. Existing files are never overwritten.
 
+`transcribe <project> --model small --language en` creates word timings from narration. It uses the project's `studio-data/explainer/script.txt` as an optional recognition hint; pass `--script <path>` to use another text file. The script guides recognition but does not force words or timings to match it. Choose another faster-whisper model size with `--model` when accuracy or local compute needs differ.
+
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
 ## JSON output

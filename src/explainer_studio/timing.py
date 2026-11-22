@@ -73,7 +73,9 @@ def validate_words(words: list[dict], duration: float) -> None:
         previous = start
 
 
-def transcribe(root: Path, model_name: str = "small", language: str | None = None) -> int:
+def transcribe(
+    root: Path, model_name: str = "small", language: str | None = None, script: Path | None = None,
+) -> int:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
@@ -82,9 +84,16 @@ def transcribe(root: Path, model_name: str = "small", language: str | None = Non
     voice = project_file(root, project["voice"])
     if not voice.is_file():
         raise ProjectError(f"missing voice recording: {voice}")
+    script_path = script or studio_file(root, "script.txt")
+    if script is not None and not script_path.is_file():
+        raise ProjectError(f"missing transcription script: {script_path}")
+    prompt = " ".join(script_path.read_text(encoding="utf-8").split()) if script_path.is_file() else ""
     duration = probe_duration(voice)
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, _ = model.transcribe(str(voice), language=language, word_timestamps=True, vad_filter=True)
+    options = {"language": language, "word_timestamps": True, "vad_filter": True}
+    if prompt:
+        options["initial_prompt"] = prompt
+    segments, _ = model.transcribe(str(voice), **options)
     words = []
     for segment in segments:
         for word in segment.words or []:
