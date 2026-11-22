@@ -126,7 +126,7 @@ if (args[0] === 'capabilities') {
             board = json.loads(board_path.read_text(encoding="utf-8"))
             self.assertFalse(board["approved"])
             self.assertEqual(board["scenes"][0]["headline"], "Revised headline")
-            render = cli("render", project, "--preview", success=False)
+            render = cli("render", project, success=False)
             self.assertIn("storyboard is not approved", render.stderr)
             cli("approve", project)
             board = json.loads(board_path.read_text(encoding="utf-8"))

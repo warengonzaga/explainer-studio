@@ -319,6 +319,28 @@ def _check_reels_box(x: float, y: float, width: float, height: float, label: str
         raise ProjectError(f"Reels {label} is outside the safe area; reposition it before rendering")
 
 
+def ensure_render_allowed(board: dict, *, preview: bool) -> None:
+    """Final renders require the current storyboard approval. Draft previews do not."""
+    if preview:
+        return
+    if not board.get("approved") or board.get("approval_hash") != storyboard_hash(board):
+        raise ProjectError("storyboard is not approved; review it in chat, then run `explainer approve <project>`")
+
+
+def draft_mark_track(duration: float, *, portrait: bool, type_scale: float) -> dict:
+    """A visible DRAFT label kept inside the portrait safe area."""
+    clip = {
+        "id": "draft-mark", "timelineStart": 0, "durationSeconds": duration, "text": "DRAFT",
+        "x": 0.64, "y": 0.70, "width": 0.14, "height": 0.04,
+        "fontSize": max(8, round(22 * type_scale)), "fontWeight": 800,
+        "color": "#172236", "backgroundColor": "#F6F8FC",
+        "textAlign": "center", "verticalAlign": "center",
+    }
+    if portrait:
+        _check_reels_box(clip["x"], clip["y"], clip["width"], clip["height"], "draft mark")
+    return {"id": "studio-draft", "kind": "overlay", "order": 8, "clips": [clip]}
+
+
 def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = False, portrait: bool = False) -> Path:
     from PIL import Image
     from .avatar import _is_blinking, avatar_box, draw_avatar
@@ -327,8 +349,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     data = studio_data(root)
     project = read_json(data / "project.json")
     board = read_json(data / "storyboard.json")
-    if not board.get("approved") or board.get("approval_hash") != storyboard_hash(board):
-        raise ProjectError("storyboard is not approved; review it in chat, then run `explainer approve <project>`")
+    ensure_render_allowed(board, preview=preview)
     voice = project_file(root, project["voice"])
     duration = probe_duration(voice)
     validate_storyboard(root, board, duration)
@@ -551,6 +572,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 {"id": "music-bed", "assetId": "studio-music", "sourceIn": 0, "sourceOut": music_clip_duration, "timelineStart": 0, "durationSeconds": music_clip_duration, "volume": 0.1},
             ]})
             timeline["audioMix"] = {"sidechain": [{"sourceTrackId": "studio-voice", "targetTrackId": "studio-music", "thresholdDb": -34, "ratio": 5, "attackSeconds": 0.02, "releaseSeconds": 0.4}]}
+        if preview:
+            timeline["tracks"].append(draft_mark_track(duration, portrait=is_portrait, type_scale=type_scale))
         timeline["audioMastering"] = {"integratedLoudnessLUFS": -16, "truePeakDBTP": -1.5, "loudnessRangeLU": 11}
         timeline["project"]["durationSeconds"] = duration
         for track in timeline.get("tracks", []):
