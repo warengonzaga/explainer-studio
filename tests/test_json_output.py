@@ -164,6 +164,36 @@ class JsonOutputTest(unittest.TestCase):
         self.assertIn("Acme", out)
         self.assertNotIn('"command"', out)
 
+    def test_setup_saves_caption_preset_and_hook_font_to_profile(self):
+        workspace = {key: str(self.home / key) for key in ("root", "studio", "library", "avatarPacks", "projects")}
+        with patch("explainer_studio.engine.setup_aivee_home", return_value=workspace), patch("explainer_studio.captions.warn_missing_fonts"):
+            code, out, err = self.invoke(
+                "setup", "--home", str(self.home / "AIVEE"), "--caption-font", "Arial",
+                "--caption-keyword-color", "#FFD500", "--caption-x", "0.2", "--caption-y", "0.4",
+                "--caption-width", "0.6", "--caption-height", "0.1", "--hook-font", "Bebas Neue",
+            )
+
+        self.assertEqual((code, err), (0, ""))
+        profile = json.loads((self.home / "profile.json").read_text(encoding="utf-8"))
+        self.assertEqual(profile["caption"]["fontFamily"], "Arial")
+        self.assertEqual(profile["caption"]["wordHighlightColor"], "#FFD500")
+        self.assertEqual(profile["caption"]["placement"], {"x": 0.2, "y": 0.4, "width": 0.6, "height": 0.1})
+        self.assertEqual(profile["caption"]["textShadow"]["blurPixels"], 4)
+        self.assertEqual(profile["hook_font_family"], "Bebas Neue")
+
+    def test_setup_json_reports_font_warnings_as_data(self):
+        workspace = {key: str(self.home / key) for key in ("root", "studio", "library", "avatarPacks", "projects")}
+        warning = "hook font 'Bebas Neue' is not installed"
+        with patch("explainer_studio.engine.setup_aivee_home", return_value=workspace), patch(
+            "explainer_studio.captions.warn_missing_fonts", return_value=[warning],
+        ):
+            code, out, err = self.invoke("setup", "--json", "--home", str(self.home / "AIVEE"))
+
+        self.assertEqual((code, err), (0, ""))
+        payload = json.loads(out)
+        self.assert_result(payload, "setup", True)
+        self.assertEqual(payload["data"]["warnings"], [warning])
+
     def test_scene_composition_invalidates_approval_and_tracks_all_local_files(self):
         from explainer_studio.common import ProjectError, file_hash
         from explainer_studio.timing import scene_composition_hash, validate_storyboard

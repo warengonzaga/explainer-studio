@@ -236,6 +236,7 @@ def sync_check_command(args) -> None:
 
 def setup(args) -> None:
     from .engine import setup_aivee_home
+    from .captions import CAPTION_PLACEMENT_FIELDS, DEFAULT_CAPTION_STYLE, DEFAULT_HOOK_FONT, font_stack, warn_missing_fonts
 
     target = studio_home() / "profile.json"
     old = read_json(target) if target.is_file() else {}
@@ -260,6 +261,33 @@ def setup(args) -> None:
         colors[key] = value or colors.get(key) or default
         if not re.fullmatch(r"#[0-9A-Fa-f]{6}", colors[key]):
             raise ProjectError(f"{key} must be a six-digit hex color")
+    old_caption = old.get("caption", {}) or {}
+    if not isinstance(old_caption, dict):
+        raise ProjectError("saved caption settings must be an object")
+    caption = {**DEFAULT_CAPTION_STYLE, **old_caption}
+    caption["fontFamily"] = args.caption_font or caption["fontFamily"]
+    font_stack(caption["fontFamily"])
+    caption["wordHighlightColor"] = args.caption_keyword_color or caption["wordHighlightColor"]
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?", caption["wordHighlightColor"]):
+        raise ProjectError("caption keyword color must be a six- or eight-digit hex color")
+    placement = caption.get("placement", {})
+    if not isinstance(placement, dict):
+        raise ProjectError("caption placement must be an object")
+    placement = {key: value for key, value in placement.items() if key in CAPTION_PLACEMENT_FIELDS}
+    for key in CAPTION_PLACEMENT_FIELDS:
+        value = getattr(args, f"caption_{key}")
+        if value is not None:
+            placement[key] = value
+    if any(not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 or value > 1 for value in placement.values()):
+        raise ProjectError("caption placement values must be finite numbers from 0 to 1")
+    for edge in ("x", "y"):
+        size = "width" if edge == "x" else "height"
+        if edge in placement and size in placement and placement[edge] + placement[size] > 1:
+            raise ProjectError(f"caption placement {edge} + {size} must not exceed 1")
+    if placement:
+        caption["placement"] = placement
+    hook_font_family = args.hook_font or old.get("hook_font_family") or DEFAULT_HOOK_FONT
+    font_stack(hook_font_family)
     logo = old.get("logo")
     if args.logo:
         source = Path(args.logo).expanduser().resolve()
@@ -321,6 +349,7 @@ def setup(args) -> None:
         "rhubarb_path": str(Path(rhubarb_path).expanduser().resolve()) if rhubarb_path else None,
         "aivee_home": str(aivee_home), "aivee_workspace": workspace,
         "colors": colors, "logo": logo, "cta": args.cta or old.get("cta") or "",
+        "caption": caption, "hook_font_family": hook_font_family,
     }
     staged_profile = target.with_name(f"profile.json.stage-{uuid.uuid4().hex}")
     try:
@@ -334,9 +363,10 @@ def setup(args) -> None:
         staged_profile.unlink(missing_ok=True)
     if avatar_backup:
         shutil.rmtree(avatar_backup)
+    font_warnings = warn_missing_fonts(profile, stream=False if args.json else None)
     emit(
         args,
-        {"profile": str(target), "aivee_home": str(aivee_home)},
+        {"profile": str(target), "aivee_home": str(aivee_home), "warnings": font_warnings},
         [],
         f"profile saved: {target}",
         f"AIVEE home: {aivee_home}",
@@ -901,12 +931,14 @@ def default_render_name(*, preview: bool, portrait: bool) -> str:
 
 def render_engine_command(args) -> None:
     from .engine import render_with_engine
+    from .captions import warn_missing_fonts
 
     root = Path(args.project).resolve()
     profile = load_profile()
+    font_warnings = warn_missing_fonts(profile, stream=False if args.json else None)
     target = Path(args.output).resolve() if args.output else root / "renders" / default_render_name(preview=args.preview, portrait=args.portrait)
     output = render_with_engine(root, target, profile, preview=args.preview, portrait=args.portrait)
-    data = {"video": str(output), "preview": bool(args.preview), "portrait": bool(args.portrait)}
+    data = {"video": str(output), "preview": bool(args.preview), "portrait": bool(args.portrait), "warnings": font_warnings}
     if args.preview:
         data["review_gate"] = "preview"
         steps = [command_step("contact-sheet", str(root), str(output))]
@@ -997,6 +1029,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--background")
     p.add_argument("--ink")
     p.add_argument("--accent")
+    p.add_argument("--caption-font", help="caption font family")
+    p.add_argument("--caption-keyword-color", help="caption keyword highlight hex color")
+    p.add_argument("--caption-x", type=float, help="caption left position from 0 to 1")
+    p.add_argument("--caption-y", type=float, help="caption top position from 0 to 1")
+    p.add_argument("--caption-width", type=float, help="caption width from 0 to 1")
+    p.add_argument("--caption-height", type=float, help="caption height from 0 to 1")
+    p.add_argument("--hook-font", help="scene hook font family")
     p.add_argument("--force", action="store_true")
     p.set_defaults(handler=setup)
     p = add_command(sub, json_flags, "profile", help="show saved non-secret settings")
