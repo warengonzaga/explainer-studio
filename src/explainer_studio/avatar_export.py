@@ -23,6 +23,8 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
     if target.is_symlink():
         raise ProjectError(f"AIVEE project must not be a symlink: {target}")
     target = target.resolve()
+    if source == target or source.is_relative_to(target) or target.is_relative_to(source):
+        raise ProjectError("Studio and native AIVEE projects must be separate directories")
     if not source.is_dir():
         raise ProjectError(f"Studio project not found: {source}")
     if not target.is_dir():
@@ -112,6 +114,8 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
             sprite_records[(pose, mouth, blink)] = {"file": f"sprites/{image_name}", "asset_id": None, "asset_path": None}
 
         registered = list_project_assets(target).get("assets", [])
+        if not isinstance(registered, list):
+            raise ProjectError("AIVEE returned an invalid asset list")
         registered_by_id = {item["id"]: item for item in registered if isinstance(item, dict) and isinstance(item.get("id"), str)}
 
         def register_or_reuse(path: Path, asset_id: str) -> str:
@@ -120,8 +124,15 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
             if existing:
                 if existing.get("sha256") != digest:
                     raise ProjectError(f"AIVEE asset ID conflicts with existing project media: {asset_id}")
-                return existing["path"]
+                asset_path = existing.get("path")
+                if not isinstance(asset_path, str) or not asset_path:
+                    raise ProjectError(f"AIVEE returned an invalid asset path for {asset_id}")
+                return asset_path
             asset = register_asset(target, path, asset_id)
+            if asset.get("id") != asset_id or asset.get("sha256") != digest:
+                raise ProjectError(f"AIVEE returned invalid registration metadata for {asset_id}")
+            if not isinstance(asset.get("path"), str) or not asset["path"]:
+                raise ProjectError(f"AIVEE returned an invalid asset path for {asset_id}")
             registered_by_id[asset_id] = asset
             return asset["path"]
 

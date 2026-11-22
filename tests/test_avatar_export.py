@@ -101,6 +101,10 @@ class AvatarExportTest(unittest.TestCase):
         with self.assertRaisesRegex(ProjectError, "already exists"):
             export_avatar(self.source, self.target, {})
 
+    def test_export_requires_a_distinct_native_project(self):
+        with self.assertRaisesRegex(ProjectError, "must be separate"):
+            export_avatar(self.source, self.source, {})
+
     def test_export_can_retry_after_aivee_registers_media_then_fails(self):
         def register_then_fail(target, source, asset_id):
             self.register_asset(target, source, asset_id)
