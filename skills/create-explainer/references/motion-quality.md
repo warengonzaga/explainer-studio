@@ -41,6 +41,8 @@ These are project recommendations for story planning, art direction, animation a
 
 Studio's `visual_cues` and PNG layer manifests support preset entrances. For custom travel, transformations, or drawn paths, add an editable HTML/GSAP composition to the storyboard scene so Studio still supplies narration timing, avatar states, captions, approval, and rendering.
 
+The repository includes an [animated Reel scene starter](../../../library/templates/reel-shot-plan/README.md) with editable enter, move, counter, route-change, and loop-back beats.
+
 1. Create `compositions/scenes/<name>/index.html` in the AIVEE project. Keep any scene assets in that folder and use original HTML/SVG with stable element IDs. Set the root composition's dimensions to the project canvas and its duration to the scene duration; register a paused GSAP timeline for that root in `window.__timelines`.
 2. Keep animation deterministic and seekable: derive animation times from the scene's narration beats, avoid CSS loops and wall-clock timers, and define initial state for every animated element.
 3. Attach the scene with `scene-composition <project> <scene-number> compositions/scenes/<name>/index.html --json`. This records the scene-folder contents and clears storyboard approval. Reattach and review the storyboard after changing any file in that folder.
