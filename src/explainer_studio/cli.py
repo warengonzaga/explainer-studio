@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -42,12 +43,12 @@ def add_command(subparsers, json_flags, name: str, **kwargs):
 
 
 def command_step(name: str, *args: str) -> str:
-    """One next-step command, with arguments quoted for a shell."""
-    return " ".join(["explainer", name, *(shlex.quote(arg) for arg in args)])
+    """One next-step command, quoted for a shell, staying on --json."""
+    return " ".join(["explainer", name, "--json", *(shlex.quote(arg) for arg in args)])
 
 
 def _step_crosses_review_gate(step: str) -> bool:
-    """True when a next step would start a film, approve it, or final-render it."""
+    """True when a next step would start a film, approve it, save an avatar pack, or final-render it."""
     try:
         parts = shlex.split(step)
     except ValueError:
@@ -55,6 +56,8 @@ def _step_crosses_review_gate(step: str) -> bool:
     if len(parts) < 2 or parts[0] != "explainer":
         return False
     if parts[1] in {"approve", "init"}:
+        return True
+    if parts[1] == "setup" and "--avatar-pack" in parts:
         return True
     return parts[1] in {"render", "render-engine"} and "--preview" not in parts
 
@@ -72,7 +75,7 @@ def load_profile() -> dict:
         raise ResultError(
             "profile not set up; run `explainer setup` through the plugin",
             {},
-            ["explainer setup"],
+            [command_step("setup")],
         )
     return read_json(path)
 
@@ -130,7 +133,7 @@ def bootstrap(args) -> None:
     if result.returncode:
         detail = (result.stderr or result.stdout).strip()
         raise ProjectError(f"could not install Studio dependencies: {detail[-1200:]}")
-    emit(args, {"python": str(python)}, ["explainer doctor"], f"managed Studio environment ready: {python}")
+    emit(args, {"python": str(python)}, [command_step("doctor")], f"managed Studio environment ready: {python}")
 
 
 def avatar_preview_command(args) -> None:
@@ -146,7 +149,7 @@ def avatar_preview_pack_command(args) -> None:
     from .avatar import preview_pack
 
     path = preview_pack(Path(args.pack).resolve(), Path(args.output).resolve())
-    emit(args, {"output": str(path)}, [command_step("setup", "--avatar-pack", str(Path(args.pack).resolve()))], str(path))
+    emit(args, {"output": str(path)}, [], str(path))
 
 
 def avatar_validate_command(args) -> None:
@@ -158,7 +161,7 @@ def avatar_validate_command(args) -> None:
     emit(
         args,
         {"name": manifest["name"], "id": manifest["id"], "version": manifest["version"]},
-        [command_step("setup", "--avatar-pack", str(pack))],
+        [],
         message,
     )
 
@@ -170,7 +173,15 @@ def contact_sheet_command(args) -> None:
     output = Path(args.output).resolve() if args.output else root / "renders" / "contact-sheet.jpg"
     sheet = contact_sheet(root, Path(args.video).resolve(), output)
     video = str(Path(args.video).resolve())
-    emit(args, {"output": str(sheet)}, [command_step("sync-check", str(root), video)], str(sheet))
+    steps = [command_step("sync-check", str(root), video)] if _sync_check_available() else []
+    emit(args, {"output": str(sheet)}, steps, str(sheet))
+
+
+def _sync_check_available() -> bool:
+    try:
+        return importlib.util.find_spec("faster_whisper") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def sync_check_command(args) -> None:
@@ -320,7 +331,7 @@ def doctor(args) -> None:
         result = subprocess.run([node, "--version"], capture_output=True, text=True)
         node_version = result.stdout.strip() if result.returncode == 0 else "unknown version"
     node_label = f"{node} ({node_version})" if node else "MISSING"
-    checks["node"] = node_label
+    checks["node"] = node_label if node else None
     checks["npm"] = npm
     lines.append(f"node: {node_label}")
     lines.append(f"npm: {npm or 'MISSING'}")
@@ -375,12 +386,13 @@ def doctor(args) -> None:
 
 def _doctor_steps(missing: list[str], profile_ready: bool) -> list[str]:
     steps = []
-    if any(item in {"Python 3.11+", "Pillow"} for item in missing):
-        steps.append("explainer bootstrap")
-    if any(item.startswith(("Node.js", "npm", "AIVEE")) for item in missing):
-        steps.append("explainer install-engine")
+    if "Pillow" in missing and "Python 3.11+" not in missing:
+        steps.append(command_step("bootstrap"))
+    node_blocked = any(item in {"Node.js 22+", "npm"} for item in missing)
+    if any(item.startswith("AIVEE") for item in missing) and not node_blocked:
+        steps.append(command_step("install-engine"))
     if not missing and not profile_ready:
-        steps.append("explainer setup")
+        steps.append(command_step("setup"))
     return steps
 
 
@@ -395,7 +407,7 @@ def install_engine(args) -> None:
     manifest_path = Path(package_root) / "package.json"
     version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
     message = f"AIVEE {version} ready from the global npm installation: {package_root}"
-    emit(args, {"version": version, "package": str(package_root)}, ["explainer doctor"], message)
+    emit(args, {"version": version, "package": str(package_root)}, [command_step("doctor")], message)
 
 
 def engine_command(args) -> int:
@@ -467,8 +479,8 @@ def init(args) -> None:
             raise ProjectError(f"saved avatar pack not found: {source}")
         project["avatar_pack"] = str(source.resolve())
     write_json(data / "project.json", project)
-    step = command_step("transcribe", str(root)) if args.voice else command_step("attach-voice", str(root), "<voice-file>")
-    emit(args, {"project": str(root)}, [step], f"project created: {root}")
+    steps = [command_step("transcribe", str(root))] if args.voice else []
+    emit(args, {"project": str(root), "voice_attached": bool(args.voice)}, steps, f"project created: {root}")
 
 
 def attach_voice(args) -> None:

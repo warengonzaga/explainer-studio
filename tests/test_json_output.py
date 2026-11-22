@@ -68,7 +68,10 @@ class JsonOutputTest(unittest.TestCase):
         self.assertEqual(list(payload), ["ok", "command", "data", "next_steps", "error"])
         self.assertTrue(payload["ok"])
         self.assertIsNone(payload["error"])
-        self.assertEqual(command_step("render", "/tmp/my project", "--preview"), "explainer render '/tmp/my project' --preview")
+        self.assertEqual(
+            command_step("render", "/tmp/my project", "--preview"),
+            "explainer render --json '/tmp/my project' --preview",
+        )
 
     def test_next_steps_never_cross_review_gates(self):
         blocked = (
@@ -78,6 +81,8 @@ class JsonOutputTest(unittest.TestCase):
             "explainer render /tmp/film",
             "explainer render /tmp/film --portrait",
             "explainer render-engine /tmp/film",
+            "explainer setup --avatar-pack /tmp/pack",
+            command_step("setup", "--avatar-pack", "/tmp/pack"),
         )
         for step in blocked:
             self.assertTrue(_step_crosses_review_gate(step), step)
@@ -85,19 +90,22 @@ class JsonOutputTest(unittest.TestCase):
                 _ungated(step)
         safe = _ungated(
             "explainer setup",
+            command_step("setup"),
             "explainer doctor",
             "explainer render /tmp/film --preview",
             "explainer render-engine /tmp/film --portrait --preview",
             command_step("contact-sheet", "/tmp/film", "/tmp/draft.mp4"),
             command_step("check", "/tmp/film", "/tmp/final.mp4"),
         )
-        self.assertEqual(len(safe), 6)
+        self.assertEqual(len(safe), 7)
         self.assertEqual(_doctor_steps([], True), [])
-        self.assertEqual(_doctor_steps([], False), ["explainer setup"])
+        self.assertEqual(_doctor_steps([], False), [command_step("setup")])
         self.assertEqual(
             _doctor_steps(["Pillow", "AIVEE (run `explainer install-engine`)"], False),
-            ["explainer bootstrap", "explainer install-engine"],
+            [command_step("bootstrap"), command_step("install-engine")],
         )
+        self.assertEqual(_doctor_steps(["Python 3.11+", "Pillow"], False), [])
+        self.assertEqual(_doctor_steps(["Node.js 22+", "npm", "AIVEE (run `explainer install-engine`)"], False), [])
 
     def test_every_command_accepts_json_and_status_is_absent(self):
         stdout = io.StringIO()
@@ -125,7 +133,7 @@ class JsonOutputTest(unittest.TestCase):
         self.assertEqual(err, "")
         payload = json.loads(out)
         self.assert_result(payload, "profile", False)
-        self.assertIn("explainer setup", payload["next_steps"])
+        self.assertEqual(payload["next_steps"], [command_step("setup")])
 
     def test_profile_json_returns_saved_settings(self):
         self.write_profile()
@@ -155,6 +163,7 @@ class JsonOutputTest(unittest.TestCase):
         self.assert_result(payload, "doctor", code == 0)
         self.assertIn("python", payload["data"])
         self.assertIn("missing", payload["data"])
+        self.assertNotEqual(payload["data"]["node"], "MISSING")
         self.assertTrue(all(not _step_crosses_review_gate(step) for step in payload["next_steps"]))
         if payload["data"]["missing"]:
             self.assertNotEqual(code, 0)
@@ -291,6 +300,90 @@ class JsonOutputTest(unittest.TestCase):
         self.assertEqual(payload["data"]["avatar_pack"], pack_path)
         self.assertEqual(payload["next_steps"], [command_step("avatar-preview", str(project.resolve()))])
         self.assertNotIn(pack_path, payload["next_steps"][0])
+
+    def test_init_json_does_not_invent_a_voice_path(self):
+        profile = {
+            "brand": "Acme",
+            "language": "en",
+            "aivee_home": str(self.home / "aivee"),
+            "colors": {"background": "#F6F8FC", "ink": "#172236", "accent": "#426BEB"},
+        }
+        (self.home / "profile.json").write_text(json.dumps(profile), encoding="utf-8")
+        root = self.home / "film"
+        data = root / "studio-data" / "explainer"
+        data.mkdir(parents=True)
+        created = {"project": str(root), "studioData": str(data)}
+        with patch("explainer_studio.engine.create_aivee_project", return_value=created):
+            code, out, err = self.invoke("init", str(root.name))
+            self.assertEqual(code, 0, err or out)
+            self.assertIn(f"project created: {root.resolve()}", out)
+            self.assertNotIn('"ok"', out)
+            code, out, err = self.invoke("init", "--json", str(root.name))
+        self.assertEqual(code, 0, err or out)
+        self.assertEqual(err, "")
+        payload = json.loads(out)
+        self.assert_result(payload, "init", True)
+        self.assertFalse(payload["data"]["voice_attached"])
+        self.assertEqual(payload["next_steps"], [])
+        voice = self.home / "take.mp3"
+        voice.write_bytes(b"voice")
+        with (
+            patch("explainer_studio.engine.create_aivee_project", return_value=created),
+            patch("explainer_studio.engine.register_asset", return_value={"path": "assets/narration.mp3"}),
+            patch("explainer_studio.cli.probe_duration", return_value=3.0),
+        ):
+            code, out, err = self.invoke("init", "--json", "retake", "--voice", str(voice))
+        self.assertEqual(code, 0, err or out)
+        payload = json.loads(out)
+        self.assert_result(payload, "init", True)
+        self.assertTrue(payload["data"]["voice_attached"])
+        self.assertEqual(payload["next_steps"], [command_step("transcribe", payload["data"]["project"])])
+        self.assertNotIn("<", payload["next_steps"][0])
+
+    def test_avatar_pack_json_waits_for_approval(self):
+        pack = self.home / "pack"
+        pack.mkdir()
+        preview = pack / "preview.png"
+        with patch("explainer_studio.avatar.validate_pack", return_value={"name": "Emo", "id": "emo", "version": "1"}):
+            code, out, err = self.invoke("avatar-validate", "--json", str(pack))
+        self.assertEqual(code, 0, err or out)
+        payload = json.loads(out)
+        self.assert_result(payload, "avatar-validate", True)
+        self.assertEqual(payload["next_steps"], [])
+        with patch("explainer_studio.avatar.preview_pack", return_value=preview):
+            code, out, err = self.invoke("avatar-preview-pack", "--json", str(pack), "--output", str(preview))
+        self.assertEqual(code, 0, err or out)
+        payload = json.loads(out)
+        self.assert_result(payload, "avatar-preview-pack", True)
+        self.assertEqual(payload["data"]["output"], str(preview))
+        self.assertEqual(payload["next_steps"], [])
+
+    def test_contact_sheet_json_skips_sync_check_without_faster_whisper(self):
+        root = self.home / "film"
+        root.mkdir()
+        video = root / "draft.mp4"
+        video.write_bytes(b"video")
+        sheet = root / "sheet.jpg"
+        with (
+            patch("explainer_studio.quality.contact_sheet", return_value=sheet),
+            patch("explainer_studio.cli._sync_check_available", return_value=False),
+        ):
+            code, out, err = self.invoke("contact-sheet", "--json", str(root), str(video))
+        self.assertEqual(code, 0, err or out)
+        payload = json.loads(out)
+        self.assert_result(payload, "contact-sheet", True)
+        self.assertEqual(payload["next_steps"], [])
+        with (
+            patch("explainer_studio.quality.contact_sheet", return_value=sheet),
+            patch("explainer_studio.cli._sync_check_available", return_value=True),
+        ):
+            code, out, err = self.invoke("contact-sheet", "--json", str(root), str(video))
+        self.assertEqual(code, 0, err or out)
+        payload = json.loads(out)
+        self.assertEqual(
+            payload["next_steps"],
+            [command_step("sync-check", str(root.resolve()), str(video.resolve()))],
+        )
 
 
 if __name__ == "__main__":
