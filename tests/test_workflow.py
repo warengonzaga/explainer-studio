@@ -21,8 +21,14 @@ sys.path.insert(0, str(ROOT / "src"))
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe") and shutil.which("node") and shutil.which("npm"), "FFmpeg and Node.js/npm are required")
 class WorkflowTest(unittest.TestCase):
     @staticmethod
+    def fake_aivee_dir(prefix: Path) -> Path:
+        """Match `npm root -g`: Windows uses <prefix>/node_modules, others <prefix>/lib/node_modules."""
+        root = prefix if os.name == "nt" else prefix / "lib"
+        return root / "node_modules" / "aivee"
+
+    @staticmethod
     def install_fake_aivee(prefix: Path) -> None:
-        package = prefix / "node_modules" / "aivee"
+        package = WorkflowTest.fake_aivee_dir(prefix)
         (package / "src").mkdir(parents=True)
         (package / "package.json").write_text(json.dumps({
             "name": "aivee", "version": "0.1.0", "bin": {"aivee": "src/cli.mjs"},
@@ -30,8 +36,9 @@ class WorkflowTest(unittest.TestCase):
         (package / "src" / "cli.mjs").write_text('''
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, resolve } from 'node:path';
-const packageRoot = join(process.env.NPM_CONFIG_PREFIX, 'node_modules', 'aivee');
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 if (args[0] === 'capabilities') {
   console.log(JSON.stringify({ schemaVersion: 1, node: { supported: true }, render: { requirementsAvailable: true, outputs: { mp4: { defaultCodecAvailable: true } } } }));
@@ -160,7 +167,7 @@ if (args[0] === 'capabilities') {
             failed = cli("retime", project, "failed-retime", "--voice", new_voice, "--words", invalid_timing, success=False)
             self.assertIn("word timings must be a nonempty JSON array", failed.stderr)
             self.assertFalse((aivee_home / "Studios" / "Explainer" / "Projects" / "failed-retime").exists())
-            package = Path(env["NPM_CONFIG_PREFIX"]) / "node_modules" / "aivee"
+            package = WorkflowTest.fake_aivee_dir(Path(env["NPM_CONFIG_PREFIX"]))
             (package / "fail-register").write_text("fail once", encoding="utf-8")
             interrupted = cli("retime", project, "retry-retime", "--voice", new_voice, "--words", timing, success=False)
             self.assertIn("injected registration failure", interrupted.stderr)
