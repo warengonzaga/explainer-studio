@@ -78,6 +78,8 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 4. Render a preview through AIVEE, request revisions, then render and inspect the final video. AIVEE owns all composition and rendering.
 5. Share the MP4 and AIVEE-owned project folder; the editable timeline, registered media, renders, and Studio workflow files are kept together in the project. Studio workflow files live under `studio-data/explainer/`.
 
+`status <project>` reports whether voice, words, storyboard, approved, preview, and final are done, the path of each existing file, and the next safe command. Preview and final paths are the default files in `renders/` (`draft-engine.mp4`, `draft-portrait-engine.mp4`, `final-engine.mp4`, and `final-portrait-engine.mp4`).
+
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
 ## JSON output
@@ -97,6 +99,8 @@ Add `--json` to a command to print one object on stdout. On `engine`, the flag m
 `ok` is true when the command finished. `command` is the subcommand name. `data` is that command's result. `next_steps` lists shell-quoted commands that are safe to run now, and each one includes `--json`. `error` is null on success and a string when the command failed. A failed command still prints this object and exits non-zero. A usage error with `--json` prints the same object and exits 2.
 
 `next_steps` never includes `init`, `approve`, `setup --avatar-pack`, or a final `render` (a render without `--preview`). Those wait for a chat review. `data.review_gate` is `storyboard` or `preview` while that review is open. A draft preview lists `contact-sheet` as its next step. `init` leaves `next_steps` empty when it did not receive a narration file (`data.voice_attached` is false). Without `--json`, commands print the same plain text as before, and errors go to stderr.
+
+`status` uses the same object. `data.project` is the project path. `data.voice_attached` is true when the narration file is present. `data.stages` has `voice`, `words`, `storyboard`, `approved`, `preview`, and `final`. Each stage has `done` and `paths`. `paths` lists files that exist. The approved stage uses the storyboard file. While narration is missing, or a storyboard review is open, `next_steps` is empty. After approval, the next command is `check` when a final file exists, `contact-sheet` when only a preview exists (`review_gate` is `preview`), and `render --preview` when neither render exists.
 
 ## 🛠️ Development
 

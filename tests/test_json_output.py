@@ -115,7 +115,7 @@ class JsonOutputTest(unittest.TestCase):
         self.assertEqual(_doctor_steps(["Python 3.11+", "Pillow"], False), [])
         self.assertEqual(_doctor_steps(["Node.js 22+", "npm", "AIVEE (run `explainer install-engine`)"], False), [])
 
-    def test_every_command_accepts_json_and_status_is_absent(self):
+    def test_every_command_accepts_json(self):
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             with self.assertRaises(SystemExit) as raised:
@@ -126,7 +126,7 @@ class JsonOutputTest(unittest.TestCase):
         self.assertIn("profile", names)
         self.assertIn("storyboard", names)
         self.assertIn("render", names)
-        self.assertNotIn("status", names)
+        self.assertIn("status", names)
         for name in names:
             help_out = io.StringIO()
             with redirect_stdout(help_out):
