@@ -5,7 +5,7 @@ description: Select and import narration for Explainer Studio from a user-provid
 
 # Narration selection
 
-Read `voice_provider_default` from the Studio profile with `profile`.
+Read `voice_provider_default` from the Studio profile with `profile --json` (`data.voice_provider_default`).
 
 - If it is `ask` or missing, ask which source to use for this generation: a recording file supplied by the user, ElevenLabs, Higgsfield, or Suno.
 - If it names a provider or `recording`, use that choice by default. A user may override it for one film; do not change the saved preference unless asked.
@@ -16,6 +16,6 @@ Read `voice_provider_default` from the Studio profile with `profile`.
 - Do not collect API keys, account passwords, or voice credentials in chat or Studio files. Let the connected host/provider handle authentication. Never clone a voice without the user's explicit request and rights to that voice.
 - If `recording` is selected but no recording file is available, ask the user to provide one or choose another source; never silently switch.
 - Return generated audio as an accessible local file. If the provider returns only a hosted or expiring link, tell the user to download and attach the audio in chat before continuing.
-- Once narration is ready, create the AIVEE project with `init <slug> --script <approved-script-file>` and register the narration with `attach-voice <project> <audio-file>`. Preserve prior takes by creating a new project for each new narration take.
+- Once narration is ready, create the AIVEE project with `init <slug> --script <approved-script-file> --json` and register the narration with `attach-voice <project> <audio-file> --json`. Preserve prior takes by creating a new project for each new narration take.
 
 Use the selected provider guide: [ElevenLabs](../elevenlabs-voiceover/SKILL.md), [Higgsfield](../higgsfield-voiceover/SKILL.md), or [Suno](../suno-voiceover/SKILL.md). These providers must be callable through the active Codex or Claude Code host. Studio does not integrate their APIs directly. Local text-to-speech is not supported yet; do not present it as an available source.

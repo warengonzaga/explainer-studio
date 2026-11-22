@@ -82,19 +82,21 @@ Run `python scripts/explainer.py --help` for CLI commands. Projects preserve sou
 
 ## JSON output
 
-Add `--json` to a command to print one object on stdout:
+Add `--json` to a command to print one object on stdout. On `engine`, the flag may come before or after the engine arguments.
 
 ```json
 {
   "ok": true,
   "command": "storyboard",
-  "data": {"scenes": 4},
-  "next_steps": ["explainer approve <project>"],
+  "data": {"scenes": 4, "review_gate": "storyboard"},
+  "next_steps": [],
   "error": null
 }
 ```
 
-`ok` is true when the command finished. `command` is the subcommand name. `data` is that command's result. `next_steps` lists command strings to run next; path arguments are shell-quoted. `error` is null on success and a string when the command failed. A failed command still prints this object and exits non-zero. Without `--json`, commands print the same plain text as before, and errors go to stderr. Argparse usage errors stay plain text.
+`ok` is true when the command finished. `command` is the subcommand name. `data` is that command's result. `next_steps` lists shell-quoted commands that are safe to run now. `error` is null on success and a string when the command failed. A failed command still prints this object and exits non-zero. A usage error with `--json` prints the same object and exits 2.
+
+`next_steps` never includes `init`, `approve`, or a final `render` (a render without `--preview`). Those wait for a chat review. `data.review_gate` is `storyboard` or `preview` while that review is open. A draft preview lists `contact-sheet` as its next step. Without `--json`, commands print the same plain text as before, and errors go to stderr.
 
 ## 🛠️ Development
 

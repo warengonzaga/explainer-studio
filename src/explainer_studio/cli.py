@@ -29,8 +29,9 @@ def command_payload(command: str, data: dict, next_steps: list[str], *, ok: bool
 
 
 def emit(args, data: dict, next_steps: list[str], *lines: str) -> None:
+    steps = _ungated(*next_steps)
     if args.json:
-        print(json.dumps(command_payload(args.command, data, next_steps), ensure_ascii=False))
+        print(json.dumps(command_payload(args.command, data, steps), ensure_ascii=False))
         return
     for line in lines:
         print(line)
@@ -43,6 +44,26 @@ def add_command(subparsers, json_flags, name: str, **kwargs):
 def command_step(name: str, *args: str) -> str:
     """One next-step command, with arguments quoted for a shell."""
     return " ".join(["explainer", name, *(shlex.quote(arg) for arg in args)])
+
+
+def _step_crosses_review_gate(step: str) -> bool:
+    """True when a next step would start a film, approve it, or final-render it."""
+    try:
+        parts = shlex.split(step)
+    except ValueError:
+        return True
+    if len(parts) < 2 or parts[0] != "explainer":
+        return False
+    if parts[1] in {"approve", "init"}:
+        return True
+    return parts[1] in {"render", "render-engine"} and "--preview" not in parts
+
+
+def _ungated(*steps: str) -> list[str]:
+    crossed = [step for step in steps if _step_crosses_review_gate(step)]
+    if crossed:
+        raise RuntimeError("next_steps crosses a review gate: " + "; ".join(crossed))
+    return list(steps)
 
 
 def load_profile() -> dict:
@@ -62,7 +83,7 @@ def show_profile(args) -> None:
         profile["voice_provider_default"] = "elevenlabs" if profile.get("voice_route") == "elevenlabs" else "ask"
     profile.pop("voice_route", None)
     profile.pop("voice_id", None)
-    emit(args, profile, ["explainer init <project>"], json.dumps(profile, indent=2))
+    emit(args, profile, [], json.dumps(profile, indent=2))
 
 
 def _replace_avatar_pack(source: Path, destination: Path) -> Path | None:
@@ -266,7 +287,7 @@ def setup(args) -> None:
     emit(
         args,
         {"profile": str(target), "aivee_home": str(aivee_home)},
-        ["explainer init <project>"],
+        [],
         f"profile saved: {target}",
         f"AIVEE home: {aivee_home}",
     )
@@ -360,8 +381,6 @@ def _doctor_steps(missing: list[str], profile_ready: bool) -> list[str]:
         steps.append("explainer install-engine")
     if not missing and not profile_ready:
         steps.append("explainer setup")
-    if not missing and profile_ready:
-        steps.append("explainer init <project>")
     return steps
 
 
@@ -382,7 +401,10 @@ def install_engine(args) -> None:
 def engine_command(args) -> int:
     from .engine import resolve_aivee
 
-    arguments = args.arguments
+    arguments = list(args.arguments)
+    if "--json" in arguments:
+        args.json = True
+        arguments = [item for item in arguments if item != "--json"]
     if arguments and arguments[0] == "--":
         arguments = arguments[1:]
     if not arguments:
@@ -623,8 +645,8 @@ def retime(args) -> None:
     (data / marker_name).unlink(missing_ok=True)
     emit(
         args,
-        {"project": str(target)},
-        [command_step("approve", str(target))],
+        {"project": str(target), "review_gate": "storyboard"},
+        [],
         f"retimed project created: {target}; review and approve the new storyboard",
     )
 
@@ -650,7 +672,12 @@ def attach_avatar(args) -> None:
     project = read_json(data / "project.json")
     project["avatar_pack"] = str(target.resolve())
     write_json(data / "project.json", project)
-    emit(args, {"project": str(target)}, [command_step("avatar-preview", str(target))], f"avatar attached: {target}")
+    emit(
+        args,
+        {"avatar_pack": str(target.resolve())},
+        [command_step("avatar-preview", str(root))],
+        f"avatar attached: {target}",
+    )
 
 
 def approve(args) -> None:
@@ -728,11 +755,13 @@ def render_engine_command(args) -> None:
     profile = load_profile()
     target = Path(args.output).resolve() if args.output else root / "renders" / default_render_name(preview=args.preview, portrait=args.portrait)
     output = render_with_engine(root, target, profile, preview=args.preview, portrait=args.portrait)
+    data = {"video": str(output), "preview": bool(args.preview), "portrait": bool(args.portrait)}
     if args.preview:
-        step = command_step("render", str(root), *(["--portrait"] if args.portrait else []))
+        data["review_gate"] = "preview"
+        steps = [command_step("contact-sheet", str(root), str(output))]
     else:
-        step = command_step("check", str(root), str(output))
-    emit(args, {"video": str(output), "preview": bool(args.preview), "portrait": bool(args.portrait)}, [step], str(output))
+        steps = [command_step("check", str(root), str(output))]
+    emit(args, data, steps, str(output))
 
 
 def transcribe_command(args) -> None:
@@ -758,14 +787,32 @@ def storyboard_command(args) -> None:
     count = len(build_storyboard(root)["scenes"])
     emit(
         args,
-        {"scenes": count, "storyboard": str(studio_file(root, "storyboard.json"))},
-        [command_step("approve", str(root))],
+        {
+            "scenes": count,
+            "storyboard": str(studio_file(root, "storyboard.json")),
+            "review_gate": "storyboard",
+        },
+        [],
         f"{count} scenes planned; review storyboard.json before approval",
     )
 
 
+class ExplainerParser(argparse.ArgumentParser):
+    """Usage errors honor --json when the invocation asked for it."""
+
+    commands: set[str] = set()
+    argv: list[str] = []
+
+    def error(self, message: str) -> None:
+        if "--json" in self.argv:
+            command_name = next((token for token in self.argv if token in self.commands), "")
+            print(json.dumps(command_payload(command_name, {}, [], ok=False, error=message), ensure_ascii=False))
+            raise SystemExit(2)
+        super().error(message)
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="explainer", description="Create voice-timed explainer videos")
+    parser = ExplainerParser(prog="explainer", description="Create voice-timed explainer videos")
     json_flags = argparse.ArgumentParser(add_help=False)
     json_flags.add_argument("--json", action="store_true", help="print one JSON result on stdout")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -872,7 +919,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--model", default="small")
     p.add_argument("--language")
     p.set_defaults(handler=sync_check_command)
-    args = parser.parse_args(argv)
+    ExplainerParser.commands = set(sub.choices)
+    ExplainerParser.argv = list(sys.argv[1:] if argv is None else argv)
+    try:
+        args = parser.parse_args(argv)
+    finally:
+        ExplainerParser.argv = []
+        ExplainerParser.commands = set()
     try:
         result = args.handler(args)
         return result if isinstance(result, int) else 0
@@ -881,7 +934,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(command_payload(
                 args.command,
                 getattr(exc, "data", {}) or {},
-                getattr(exc, "next_steps", []) or [],
+                _ungated(*list(getattr(exc, "next_steps", []) or [])),
                 ok=False,
                 error=str(exc),
             ), ensure_ascii=False))
