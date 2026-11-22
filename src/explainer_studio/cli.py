@@ -834,6 +834,13 @@ def attach_avatar(args) -> None:
     )
 
 
+def export_avatar_command(args) -> None:
+    from .avatar_export import export_avatar
+
+    result = export_avatar(Path(args.project), Path(args.engine_project), load_profile())
+    emit(args, result, [], f"avatar export written: {result['output']}")
+
+
 def approve(args) -> None:
     from .timing import storyboard_hash, validate_storyboard
 
@@ -1080,6 +1087,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("project")
     p.add_argument("pack")
     p.set_defaults(handler=attach_avatar)
+    p = add_command(sub, json_flags, "export-avatar", help="export avatar sprites, timing, voice, and words to an AIVEE project")
+    p.add_argument("project", help="approved Studio project")
+    p.add_argument("engine_project", help="existing native AIVEE project")
+    p.set_defaults(handler=export_avatar_command)
     p = add_command(sub, json_flags, "avatar-preview", help="make a contact sheet of avatar poses and mouth shapes")
     p.add_argument("project")
     p.add_argument("--output")

@@ -144,6 +144,21 @@ if (args[0] === 'capabilities') {
             board = json.loads(board_path.read_text(encoding="utf-8"))
             self.assertTrue(board["approved"])
 
+            native_project = aivee_home / "Studios" / "Explainer" / "Projects" / "native-export"
+            cli("init", "native-export")
+            exported = json.loads(cli("export-avatar", project, native_project, "--json").stdout)
+            self.assertTrue(exported["ok"], exported["error"])
+            export_dir = Path(exported["data"]["output"])
+            export_timing = json.loads((export_dir / "timing.json").read_text(encoding="utf-8"))
+            self.assertEqual(export_timing["canvas"], {"width": 1080, "height": 1920, "fps": 30})
+            self.assertTrue((export_dir / "words.json").is_file())
+            self.assertTrue((export_dir / "narration.mp3").is_file())
+            self.assertTrue(all((export_dir / item["file"]).is_file() for item in export_timing["sprites"]))
+            registered = json.loads((native_project / "test-assets.json").read_text(encoding="utf-8"))
+            registered_ids = {asset["id"] for asset in registered}
+            self.assertIn(export_timing["narration"]["asset_id"], registered_ids)
+            self.assertTrue({sprite["asset_id"] for sprite in export_timing["sprites"]} <= registered_ids)
+
             self.assertFalse(list((project / "renders").glob("*.mp4")))
 
             Image.new("RGBA", (200, 100), "blue").save(project / "assets" / "diagram.png")

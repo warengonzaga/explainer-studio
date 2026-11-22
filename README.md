@@ -89,6 +89,8 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 `scene-composition <project> <scene-number> <html-path>` attaches a project-owned AIVEE HTML/GSAP composition to a storyboard scene. Keep the composition and its local assets in `compositions/scenes/<name>/`; it replaces that scene's `visual_cues` and renders on its narration timing under Studio's avatar and captions. The command records a hash of the scene folder and clears storyboard approval. Reattach and review the storyboard after changing any file in that folder.
 
+To continue an approved Studio avatar performance in a separate native AIVEE project, run `explainer export-avatar <studio-project> <aivee-project>`. Studio writes transparent pose/mouth/blink sprites, `timing.json`, `words.json`, and a narration copy under the target project's `studio-data/explainer/avatar-exports/`; it registers the narration and sprites with AIVEE. The command requires an approved storyboard and preserves the Studio canvas placement in `avatar_placement`.
+
 `safe-check <project>` samples visible text and graphic bounds in every attached portrait HTML composition against the approved Reels safe area. `check <project> <video>` includes the same composition check and scans decoded frames for isolated A-B-A flashes. The flicker scan targets one-frame flashes; it does not replace watching the encoded video and reviewing its motion.
 
 `stills <project> --at 0.6,4.9 --sheet` exports full-resolution PNGs at the requested seconds from the latest final render (or latest preview if no final exists). Pass `--video <path>` to choose a specific render, `--output <directory>` to choose a destination, and `--sheet` to add a timestamp-labeled contact sheet. Existing files are never overwritten.
