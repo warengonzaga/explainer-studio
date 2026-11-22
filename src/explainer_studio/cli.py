@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 import re
 import shlex
@@ -175,6 +176,44 @@ def contact_sheet_command(args) -> None:
     video = str(Path(args.video).resolve())
     steps = [command_step("sync-check", str(root), video)] if _sync_check_available() else []
     emit(args, {"output": str(sheet)}, steps, str(sheet))
+
+
+def parse_still_times(value: str) -> list[float]:
+    try:
+        times = [float(item.strip()) for item in value.split(",")]
+    except ValueError as exc:
+        raise ProjectError("--at must be a comma-separated list of seconds") from exc
+    if not times or len(times) > 100 or any(not math.isfinite(at) or at < 0 for at in times):
+        raise ProjectError("--at must contain between 1 and 100 finite, nonnegative timestamps")
+    if len(times) != len(set(times)):
+        raise ProjectError("--at cannot contain duplicate timestamps")
+    return times
+
+
+def stills_command(args) -> None:
+    from .quality import export_stills
+    from .status import FINAL_RENDERS, PREVIEW_RENDERS
+
+    root = Path(args.project).resolve()
+    if args.video:
+        video = Path(args.video).expanduser().resolve()
+    else:
+        renders = root / "renders"
+        finals = [renders / name for name in FINAL_RENDERS if (renders / name).is_file()]
+        previews = [renders / name for name in PREVIEW_RENDERS if (renders / name).is_file()]
+        available = finals or previews
+        if not available:
+            raise ProjectError("no render found; render a video or pass --video")
+        video = max(available, key=lambda path: path.stat().st_mtime)
+    if not video.is_file():
+        raise ProjectError(f"video not found: {video}")
+    times = parse_still_times(args.at)
+    duration = probe_duration(video)
+    if any(at >= duration for at in times):
+        raise ProjectError(f"timestamps must be before the video duration ({duration:.3f}s)")
+    output = Path(args.output).expanduser().resolve() if args.output else project_file(root, "renders/stills")
+    report = export_stills(video, times, output, args.sheet)
+    emit(args, report, [], f"exported {len(report['frames'])} stills to {output}")
 
 
 def _sync_check_available() -> bool:
@@ -1039,6 +1078,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("video")
     p.add_argument("--output")
     p.set_defaults(handler=contact_sheet_command)
+    p = add_command(sub, json_flags, "stills", help="export frames at exact times from a rendered video")
+    p.add_argument("project")
+    p.add_argument("--at", required=True, help="comma-separated timestamps in seconds")
+    p.add_argument("--video", help="use this render instead of the latest final or preview")
+    p.add_argument("--output", help="output directory (defaults to renders/stills)")
+    p.add_argument("--sheet", action="store_true", help="also create a contact sheet of the selected frames")
+    p.set_defaults(handler=stills_command)
     p = add_command(sub, json_flags, "sync-check", help="compare rendered speech timings with source words")
     p.add_argument("project")
     p.add_argument("video")

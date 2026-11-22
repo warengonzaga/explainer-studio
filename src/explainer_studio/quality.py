@@ -166,6 +166,70 @@ def contact_sheet(root: Path, video: Path, output: Path) -> Path:
     return output
 
 
+def export_stills(video: Path, timestamps: list[float], output_dir: Path, make_sheet: bool = False) -> dict:
+    if not timestamps or len(timestamps) > 100:
+        raise ProjectError("provide between 1 and 100 timestamps")
+    frames = [output_dir / f"frame-{index:02d}-at-{at:.3f}s.png" for index, at in enumerate(timestamps, 1)]
+    sheet_path = output_dir / "contact-sheet.jpg"
+    targets = [*frames, *([sheet_path] if make_sheet else [])]
+    existing = [path for path in targets if path.exists()]
+    if existing:
+        raise ProjectError(f"still output already exists: {existing[0]}; choose another output directory")
+    if output_dir.exists() and not output_dir.is_dir():
+        raise ProjectError(f"still output is not a directory: {output_dir}")
+
+    made_directory = not output_dir.exists()
+    created = []
+    thumbnails = []
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for at, path in zip(timestamps, frames):
+            result = subprocess.run(
+                [command("ffmpeg"), "-nostdin", "-v", "error", "-i", str(video), "-ss", f"{at:.6f}",
+                 "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"],
+                capture_output=True, check=False,
+            )
+            if result.returncode or not result.stdout:
+                raise ProjectError(f"could not extract a frame at {at:.3f}s")
+            with Image.open(io.BytesIO(result.stdout)) as image:
+                image.load()
+                if make_sheet:
+                    thumb = image.convert("RGB")
+                    thumb.thumbnail((420, 420), Image.Resampling.LANCZOS)
+                    thumbnails.append(thumb.copy())
+            with path.open("xb") as frame_file:
+                created.append(path)
+                frame_file.write(result.stdout)
+
+        if make_sheet:
+            columns = 3 if thumbnails[0].width >= thumbnails[0].height else 4
+            cell_width = max(image.width for image in thumbnails) + 20
+            cell_height = max(image.height for image in thumbnails) + 44
+            rows = math.ceil(len(thumbnails) / columns)
+            sheet = Image.new("RGB", (columns * cell_width, rows * cell_height), "#E9EDF4")
+            draw = ImageDraw.Draw(sheet)
+            for index, image in enumerate(thumbnails):
+                x, y = (index % columns) * cell_width, (index // columns) * cell_height
+                sheet.paste(image, (x + 10, y + 10))
+                draw.text((x + 10, y + cell_height - 25), f"{timestamps[index]:.3f}s", fill="#172236")
+            with sheet_path.open("xb") as sheet_file:
+                created.append(sheet_path)
+                sheet.save(sheet_file, format="JPEG", quality=92)
+    except Exception:
+        for path in created:
+            path.unlink(missing_ok=True)
+        if made_directory:
+            try:
+                output_dir.rmdir()
+            except OSError:
+                pass
+        raise
+    return {
+        "video": str(video), "frames": [{"time": at, "path": str(path)} for at, path in zip(timestamps, frames)],
+        "contact_sheet": str(sheet_path) if make_sheet else None,
+    }
+
+
 def compare_words(source: list[dict], rendered: list[dict]) -> dict:
     a = [tokens(x["text"])[0] for x in source if tokens(x["text"])]
     b = [tokens(x["text"])[0] for x in rendered if tokens(x["text"])]
