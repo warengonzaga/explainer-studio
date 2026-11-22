@@ -47,6 +47,20 @@ class ThemeFromImagesTest(unittest.TestCase):
         background = tuple(int(colors["background"][index:index + 2], 16) for index in (1, 3, 5))
         self.assertGreaterEqual(_contrast(accent, background), 4.5)
 
+    def test_combines_multiple_images(self):
+        second = self.root / "second.png"
+        Image.new("RGB", (64, 64), "#00B050").save(second)
+
+        self.assertNotEqual(extract_theme([self.image])["accent"], extract_theme([self.image, second])["accent"])
+
+    def test_transparent_pixels_use_white_background(self):
+        transparent = self.root / "transparent.png"
+        image = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+        ImageDraw.Draw(image).rectangle((0, 0, 7, 31), fill="#CC2244")
+        image.save(transparent)
+
+        self.assertEqual(extract_theme([transparent])["background"], "#FFFFFF")
+
     def test_init_applies_palette_without_changing_profile(self):
         profile_path = Path(os.environ["EXPLAINER_STUDIO_HOME"]) / "profile.json"
         profile_path.parent.mkdir(parents=True)
