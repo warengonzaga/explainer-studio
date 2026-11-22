@@ -325,9 +325,14 @@ def portrait_regions() -> dict[str, dict[str, float]]:
 
     return {
         "visual": {"x": 0.13, "y": 0.26, "width": 0.66, "height": 0.30},
-        "bubble": {"x": 0.48, "y": 0.59, "width": 0.32, "height": 0.10},
+        "bubble": {"x": 0.46, "y": 0.59, "width": 0.34, "height": 0.10},
         "avatar": PORTRAIT_AVATAR,
     }
+
+
+def portrait_caption() -> dict[str, int]:
+    """Portrait speech-bubble type. AIVEE keeps the font size and paints overflow outside the box."""
+    return {"fontSize": 32, "wordsPerLine": 2, "wordsPerCaption": 6, "paddingPixels": 22}
 
 
 def ensure_render_allowed(board: dict, *, preview: bool) -> None:
@@ -465,13 +470,16 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         if not isinstance(caption, dict):
             raise ProjectError("project caption settings must be an object")
         bubble = portrait_regions()["bubble"] if is_portrait else {"x": 0.31, "y": 0.46, "width": 0.65, "height": 0.12}
+        text = portrait_caption() if is_portrait else {"fontSize": 48, "wordsPerCaption": 6, "wordsPerLine": 3}
         caption_options = {
             "layoutPreset": "speechBubble",
             "x": bubble["x"], "y": bubble["y"], "width": bubble["width"], "height": bubble["height"],
-            "fontSize": max(8, round(48 * type_scale)), "wordsPerCaption": 6, "wordsPerLine": 3,
+            "fontSize": max(8, round(text["fontSize"] * type_scale)),
+            "wordsPerCaption": text["wordsPerCaption"], "wordsPerLine": text["wordsPerLine"],
             "wordHighlight": True, "wordHighlightColor": colors.get("accent", "#426BEB"), "wordHighlightAnimation": "pop",
             "color": colors.get("ink", "#172236"), "backgroundColor": "#FFFFFF",
             "bubble": {"tailSide": "left", "tailPosition": 0.35, "tailSizePixels": max(8, round(26 * type_scale)), "cornerRadiusPixels": max(8, round(28 * type_scale))},
+            **({"paddingPixels": max(0, round(text["paddingPixels"] * type_scale))} if is_portrait else {}),
             **caption,
         }
         caption_clips = []

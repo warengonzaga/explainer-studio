@@ -1,3 +1,4 @@
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from explainer_studio.avatar import avatar_box
-from explainer_studio.engine import _check_reels_box, portrait_regions
+from explainer_studio.engine import _check_reels_box, portrait_caption, portrait_regions
 
 
 def _overlaps(a: dict[str, float], b: dict[str, float]) -> bool:
@@ -54,3 +55,21 @@ class PortraitLayoutTest(unittest.TestCase):
 
     def test_landscape_avatar_box_stays_put(self):
         self.assertEqual(avatar_box((1920, 1080)), (48, 313, 595, 626))
+
+    def test_portrait_caption_fits_a_long_taglish_line(self):
+        caption = portrait_caption()
+        bubble = portrait_regions()["bubble"]
+        words = "tumatakbo yung agent?".split()
+        lines = [
+            " ".join(words[index:index + caption["wordsPerLine"]])
+            for index in range(0, len(words), caption["wordsPerLine"])
+        ]
+        longest = max(lines, key=len)
+        # 0.66em matches a wide bold sans such as DejaVu Bold. AIVEE does not auto-fit.
+        usable = bubble["width"] * 1080 - 2 * caption["paddingPixels"]
+        self.assertLessEqual(len(longest) * caption["fontSize"] * 0.66, usable)
+        line_count = math.ceil(caption["wordsPerCaption"] / caption["wordsPerLine"])
+        line_box = caption["fontSize"] * 1.12
+        gap = caption["fontSize"] * 0.08
+        needed = line_count * line_box + (line_count - 1) * gap + 2 * caption["paddingPixels"]
+        self.assertLessEqual(needed, bubble["height"] * 1920)
