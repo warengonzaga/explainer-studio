@@ -50,12 +50,13 @@ if (args[0] === 'capabilities') {
   console.log(JSON.stringify(paths));
 } else if (args[0] === 'studio' && args[1] === 'project' && args[2] === 'create') {
   const slug = args[4], home = resolve(args[args.indexOf('--home') + 1]);
+  const [width, height] = args.at(-3).split('x').map(Number), fps = Number(args.at(-2));
   const project = join(home, 'Studios', 'Explainer', 'Projects', slug);
   const studioData = join(project, 'studio-data', 'explainer');
   if (existsSync(project)) throw new Error(`Project already exists: ${slug}`);
   for (const dir of ['assets', 'renders', 'transcripts', 'edits', 'compositions']) mkdirSync(join(project, dir), { recursive: true });
   mkdirSync(studioData, { recursive: true });
-  writeFileSync(join(project, 'meta.json'), JSON.stringify({ schemaVersion: 1, id: slug, name: slug, width: 1920, height: 1080, fps: 60, durationSeconds: Number(args.at(-1)) }));
+  writeFileSync(join(project, 'meta.json'), JSON.stringify({ schemaVersion: 1, id: slug, name: slug, width, height, fps, durationSeconds: Number(args.at(-1)) }));
   writeFileSync(join(project, 'timeline.json'), JSON.stringify({ project: { durationSeconds: Number(args.at(-1)) }, tracks: [], assets: [] }));
   console.log(JSON.stringify({ project, studioData }));
 } else if (args[0] === 'asset' && args[1] === 'register') {
@@ -106,7 +107,11 @@ if (args[0] === 'capabilities') {
                 return proc
 
             cli("setup", "--home", aivee_home, "--brand", "Test Brand")
-            cli("init", project_slug)
+            cli("init", project_slug, "--format", "reel")
+            studio_project = json.loads((data / "project.json").read_text(encoding="utf-8"))
+            aivee_meta = json.loads((project / "meta.json").read_text(encoding="utf-8"))
+            self.assertEqual((studio_project["format"], studio_project["width"], studio_project["height"], studio_project["fps"]), ("reel", 1080, 1920, 30))
+            self.assertEqual((aivee_meta["width"], aivee_meta["height"], aivee_meta["fps"]), (1080, 1920, 30))
             (data / "script.txt").write_text("Hello world.\n\nThis is a test.", encoding="utf-8")
             subprocess.run(
                 ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-c:a", "libmp3lame", str(project / "assets" / "voice.mp3")],
@@ -139,6 +144,21 @@ if (args[0] === 'capabilities') {
             board = json.loads(board_path.read_text(encoding="utf-8"))
             self.assertTrue(board["approved"])
 
+            native_project = aivee_home / "Studios" / "Explainer" / "Projects" / "native-export"
+            cli("init", "native-export")
+            exported = json.loads(cli("export-avatar", project, native_project, "--json").stdout)
+            self.assertTrue(exported["ok"], exported["error"])
+            export_dir = Path(exported["data"]["output"])
+            export_timing = json.loads((export_dir / "timing.json").read_text(encoding="utf-8"))
+            self.assertEqual(export_timing["canvas"], {"width": 1080, "height": 1920, "fps": 30})
+            self.assertTrue((export_dir / "words.json").is_file())
+            self.assertTrue((export_dir / "narration.mp3").is_file())
+            self.assertTrue(all((export_dir / item["file"]).is_file() for item in export_timing["sprites"]))
+            registered = json.loads((native_project / "test-assets.json").read_text(encoding="utf-8"))
+            registered_ids = {asset["id"] for asset in registered}
+            self.assertIn(export_timing["narration"]["asset_id"], registered_ids)
+            self.assertTrue({sprite["asset_id"] for sprite in export_timing["sprites"]} <= registered_ids)
+
             self.assertFalse(list((project / "renders").glob("*.mp4")))
 
             Image.new("RGBA", (200, 100), "blue").save(project / "assets" / "diagram.png")
@@ -149,6 +169,11 @@ if (args[0] === 'capabilities') {
                 "duration": .8, "x": .2, "y": .2, "width": .4, "height": .2,
             }]
             board_path.write_text(json.dumps(board), encoding="utf-8")
+            composition_dir = project / "compositions" / "scenes" / "scene-01"
+            composition_dir.mkdir(parents=True)
+            (composition_dir / "index.html").write_text("<div>Custom scene</div>", encoding="utf-8")
+            (composition_dir / "visual.svg").write_text("<svg/>", encoding="utf-8")
+            cli("scene-composition", project, "1", "compositions/scenes/scene-01/index.html")
             cli("approve", project)
             old_scene = json.loads(board_path.read_text(encoding="utf-8"))["scenes"][0]
             old_duration = old_scene["end"] - old_scene["start"]
@@ -181,8 +206,14 @@ if (args[0] === 'capabilities') {
             retimed = aivee_home / "Studios" / "Explainer" / "Projects" / "retimed"
             cli("retime", project, "retimed", "--voice", new_voice, "--words", timing)
             retimed_data = retimed / "studio-data" / "explainer"
+            retimed_meta = json.loads((retimed / "meta.json").read_text(encoding="utf-8"))
+            retimed_project = json.loads((retimed_data / "project.json").read_text(encoding="utf-8"))
+            self.assertEqual((retimed_project["format"], retimed_meta["width"], retimed_meta["height"], retimed_meta["fps"]), ("reel", 1080, 1920, 30))
             new_board = json.loads((retimed_data / "storyboard.json").read_text(encoding="utf-8"))
             new_scene = new_board["scenes"][0]
+            self.assertEqual(new_scene["composition"], "compositions/scenes/scene-01/index.html")
+            self.assertTrue((retimed / new_scene["composition"]).is_file())
+            self.assertTrue((retimed / "compositions" / "scenes" / "scene-01" / "visual.svg").is_file())
             new_duration = new_scene["end"] - new_scene["start"]
             old_cue = old_scene["visual_cues"][0]
             new_cue = new_scene["visual_cues"][0]

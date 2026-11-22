@@ -24,6 +24,20 @@ def storyboard_hash(board: dict) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def scene_composition_hash(path: Path) -> str:
+    folder = path.parent
+    files = sorted(folder.rglob("*"))
+    if any(item.is_symlink() for item in files):
+        raise ProjectError(f"scene composition must not contain symlinks: {folder}")
+    digest = hashlib.sha256()
+    for item in files:
+        if item.is_file():
+            digest.update(item.relative_to(folder).as_posix().encode("utf-8") + b"\0")
+            digest.update(file_hash(item).encode("ascii"))
+            digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def _invalidate_storyboard(root: Path) -> None:
     path = studio_file(root, "storyboard.json")
     if not path.is_file():
@@ -59,7 +73,9 @@ def validate_words(words: list[dict], duration: float) -> None:
         previous = start
 
 
-def transcribe(root: Path, model_name: str = "small", language: str | None = None) -> int:
+def transcribe(
+    root: Path, model_name: str = "small", language: str | None = None, script: Path | None = None,
+) -> int:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
@@ -68,9 +84,16 @@ def transcribe(root: Path, model_name: str = "small", language: str | None = Non
     voice = project_file(root, project["voice"])
     if not voice.is_file():
         raise ProjectError(f"missing voice recording: {voice}")
+    script_path = script or studio_file(root, "script.txt")
+    if script is not None and not script_path.is_file():
+        raise ProjectError(f"missing transcription script: {script_path}")
+    prompt = " ".join(script_path.read_text(encoding="utf-8").split()) if script_path.is_file() else ""
     duration = probe_duration(voice)
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, _ = model.transcribe(str(voice), language=language, word_timestamps=True, vad_filter=True)
+    options = {"language": language, "word_timestamps": True, "vad_filter": True}
+    if prompt:
+        options["initial_prompt"] = prompt
+    segments, _ = model.transcribe(str(voice), **options)
     words = []
     for segment in segments:
         for word in segment.words or []:
@@ -199,6 +222,16 @@ def validate_storyboard(root: Path, board: dict, duration: float | None = None) 
         pose = scene.get("pose", "idle")
         if not isinstance(pose, str) or (avatar_manifest and not pose_supported(avatar_manifest, pose)):
             raise ProjectError(f"scene {index + 1} has an unsupported avatar pose: {pose}")
+        composition = scene.get("composition")
+        if composition is not None:
+            if not isinstance(composition, str) or Path(composition).is_absolute():
+                raise ProjectError(f"scene {index + 1} composition must be a project-relative HTML path")
+            path = project_file(root, composition)
+            relative_parts = path.relative_to(root.resolve()).parts
+            if (relative_parts[:2] != ("compositions", "scenes") or path.name != "index.html"
+                    or not path.is_file()
+                    or scene.get("composition_sha256") != scene_composition_hash(path)):
+                raise ProjectError(f"scene {index + 1} composition is missing or changed; attach it again and review the storyboard")
         try:
             start, end = float(scene["start"]), float(scene["end"])
         except (KeyError, TypeError, ValueError) as exc:

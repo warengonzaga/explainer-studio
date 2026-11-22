@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .audio import mouth_at, mouth_track, phonetic_mouth_track
+from .captions import caption_options, DEFAULT_HOOK_FONT, font_stack
 from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_data, studio_home, write_json
 from .timing import storyboard_hash, validate_storyboard, validate_words
 
@@ -149,6 +150,24 @@ def avatar_intervals(keys: list[tuple[str, str, bool]], fps: int, duration: floa
     return intervals
 
 
+def avatar_keyframes(root: Path, project: dict, board: dict, profile: dict, duration: float, fps: int, work_dir: Path) -> list[tuple[str, str, bool]]:
+    """Build the per-frame avatar states shared by rendering and export."""
+    from .avatar import _is_blinking
+
+    if type(fps) is not int or not 1 <= fps <= 60 or not math.isfinite(duration) or duration <= 0:
+        raise ProjectError("invalid avatar timing duration or frame rate")
+    voice = project_file(root, project["voice"])
+    scenes = board["scenes"]
+    ends = [float(scene["end"]) for scene in scenes]
+    states = phonetic_mouth_track(voice, duration, work_dir, profile.get("rhubarb_path")) or mouth_track(voice)
+    keys = []
+    for frame in range(math.ceil(duration * fps)):
+        time = min(duration - 1e-6, frame / fps)
+        scene_index = min(len(scenes) - 1, bisect_right(ends, time))
+        keys.append((scenes[scene_index].get("pose", "idle"), mouth_at(states, time), _is_blinking(time)))
+    return keys
+
+
 def _engine_cli(command: list[str], cwd: Path, args: list[str], env: dict | None = None) -> str:
     process_env = os.environ.copy()
     if env:
@@ -172,9 +191,20 @@ def setup_aivee_home(home: Path) -> dict:
         raise ProjectError("AIVEE returned an invalid workspace response") from exc
 
 
-def create_aivee_project(home: Path, slug: str, duration: float = 10) -> dict:
+def create_aivee_project(
+    home: Path,
+    slug: str,
+    duration: float = 10,
+    *,
+    width: int = 1920,
+    height: int = 1080,
+    fps: int = 60,
+) -> dict:
     command, _ = resolve_aivee()
-    result = _engine_cli(command, home, ["studio", "project", "create", "explainer", slug, "--home", str(home), "1920x1080", "60", f"{duration:.6f}"])
+    result = _engine_cli(
+        command, home,
+        ["studio", "project", "create", "explainer", slug, "--home", str(home), f"{width}x{height}", str(fps), f"{duration:.6f}"],
+    )
     try:
         return json.loads(result)
     except json.JSONDecodeError as exc:
@@ -319,6 +349,14 @@ def _check_reels_box(x: float, y: float, width: float, height: float, label: str
         raise ProjectError(f"Reels {label} is outside the safe area; reposition it before rendering")
 
 
+def custom_scene_clips(scenes: list[dict]) -> list[dict]:
+    return [
+        {"id": f"custom-scene-{index + 1:02d}", "composition": scene["composition"],
+         "timelineStart": float(scene["start"]), "durationSeconds": float(scene["end"]) - float(scene["start"])}
+        for index, scene in enumerate(scenes) if scene.get("composition")
+    ]
+
+
 def portrait_regions() -> dict[str, dict[str, float]]:
     """Default portrait visual, speech bubble, and avatar boxes inside the Reels safe area."""
     from .avatar import PORTRAIT_AVATAR
@@ -359,7 +397,7 @@ def draft_mark_track(duration: float, *, portrait: bool, type_scale: float) -> d
 
 def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = False, portrait: bool = False) -> Path:
     from PIL import Image
-    from .avatar import _is_blinking, avatar_box, draw_avatar
+    from .avatar import avatar_box, draw_avatar
 
     root = root.resolve()
     data = studio_data(root)
@@ -376,6 +414,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
 
     engine_command, _ = resolve_aivee()
     width, height = (1080, 1920) if portrait else (int(project.get("width", 1920)), int(project.get("height", 1080)))
+    portrait = portrait or height > width
     fps = int(project.get("fps", 60))
     if preview:
         width, height = round(width / 2), round(height / 2)
@@ -388,13 +427,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     with tempfile.TemporaryDirectory(prefix="engine-export-", dir=scratch_root) as temporary:
         temporary = Path(temporary)
         scenes = board["scenes"]
-        ends = [float(scene["end"]) for scene in scenes]
-        states = phonetic_mouth_track(voice, duration, temporary, profile.get("rhubarb_path")) or mouth_track(voice)
-        keys = []
-        for frame in range(math.ceil(duration * fps)):
-            time = min(duration - 1e-6, frame / fps)
-            scene_index = min(len(scenes) - 1, bisect_right(ends, time))
-            keys.append((scenes[scene_index].get("pose", "idle"), mouth_at(states, time), _is_blinking(time)))
+        keys = avatar_keyframes(root, project, board, profile, duration, fps, temporary)
         intervals = avatar_intervals(keys, fps, duration)
 
         avatar_paths = {}
@@ -418,6 +451,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         visual_index = 0
         visual_region = portrait_regions()["visual"] if portrait else None
         for scene in scenes:
+            if scene.get("composition"):
+                continue
             for cue in scene.get("visual_cues", []):
                 if visual_region is not None:
                     cue = {**visual_region, **cue}
@@ -466,8 +501,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         type_scale = min(width / 1080, height / 1920)
         is_portrait = height > width
         colors = profile.get("colors", {})
-        caption = project.get("caption", {})
-        if not isinstance(caption, dict):
+        project_caption = project.get("caption", {})
+        if not isinstance(project_caption, dict):
             raise ProjectError("project caption settings must be an object")
         bubble = portrait_regions()["bubble"] if is_portrait else {"x": 0.31, "y": 0.46, "width": 0.65, "height": 0.12}
         text = portrait_caption() if is_portrait else {"fontSize": 48, "wordsPerCaption": 6, "wordsPerLine": 3}
@@ -480,10 +515,10 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             "color": colors.get("ink", "#172236"), "backgroundColor": "#FFFFFF",
             "bubble": {"tailSide": "left", "tailPosition": 0.35, "tailSizePixels": max(8, round(26 * type_scale)), "cornerRadiusPixels": max(8, round(28 * type_scale))},
             **({"paddingPixels": max(0, round(text["paddingPixels"] * type_scale))} if is_portrait else {}),
-            **caption,
+            **caption_options(profile, project),
         }
         caption_clips = []
-        scene_caption_fields = {"x", "y", "width", "height", "fontSize", "color", "backgroundColor", "wordHighlight", "wordHighlightColor", "wordHighlightAnimation", "bubble"}
+        scene_caption_fields = {"x", "y", "width", "height", "fontSize", "fontFamily", "fontWeight", "color", "backgroundColor", "wordHighlight", "wordHighlightColor", "wordHighlightAnimation", "textShadow", "textOutline", "bubble"}
         for scene_index, scene in enumerate(scenes):
             scene_start, scene_end = float(scene["start"]), float(scene["end"])
             scene_words = [item for item in words if scene_start <= float(item["start"]) < scene_end]
@@ -499,6 +534,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             if not isinstance(scene_caption, dict):
                 raise ProjectError("scene caption settings must be an object")
             scene_options = {key: value for key, value in scene_caption.items() if key in scene_caption_fields}
+            if "fontFamily" in scene_options:
+                scene_options["fontFamily"] = font_stack(scene_options["fontFamily"])
             options = {**caption_options, **scene_options}
             if isinstance(caption_options.get("bubble"), dict) and isinstance(scene_caption.get("bubble"), dict):
                 options["bubble"] = {**caption_options["bubble"], **scene_caption["bubble"]}
@@ -510,6 +547,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                     _check_reels_box(float(clip["x"]), float(clip["y"]), float(clip["width"]), float(clip["height"]), "caption")
                 caption_clips.append(clip)
         captions = {"id": "captions", "kind": "overlay", "order": 5, "clips": caption_clips}
+        custom_clips = custom_scene_clips(scenes)
         brand_clip = {
             "id": "studio-brand", "timelineStart": 0, "durationSeconds": duration,
             "text": project.get("brand", "Explainer Studio"),
@@ -534,7 +572,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 "durationSeconds": float(scene["end"]) - float(scene["start"]),
                 "text": scene.get("visual_label") or scene["headline"],
                 "x": 0.1 if is_portrait else 0.08, "y": 0.16, "width": 0.72 if is_portrait else 0.82, "height": 0.08,
-                "fontSize": max(8, round(54 * type_scale)), "fontWeight": 800, "color": colors.get("ink", "#172236"),
+                "fontSize": max(8, round(54 * type_scale)), "fontFamily": font_stack(profile.get("hook_font_family") or DEFAULT_HOOK_FONT),
+                "fontWeight": 800, "color": colors.get("ink", "#172236"),
                 "backgroundColor": "transparent", "textAlign": "center", "verticalAlign": "center",
                 "keyframes": [
                     {"time": 0, "properties": {"y": 0.18, "opacity": 0}},
@@ -588,6 +627,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 {"id": "narration", "assetId": "studio-narration", "sourceIn": 0, "sourceOut": duration, "timelineStart": 0, "durationSeconds": duration},
             ]},
         ]
+        if custom_clips:
+            timeline["tracks"].insert(0, {"id": "studio-custom-scenes", "kind": "overlay", "order": 1, "clips": custom_clips})
         if music:
             music_duration = probe_duration(music_copy)
             music_clip_duration = min(duration, music_duration)

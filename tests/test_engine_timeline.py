@@ -12,11 +12,22 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from explainer_studio.audio import map_phonetic_cues, phonetic_mouth_track
 from explainer_studio.common import ProjectError, file_hash
-from explainer_studio.engine import _register_render_asset, avatar_intervals
+from explainer_studio.engine import _register_render_asset, avatar_intervals, custom_scene_clips
 from explainer_studio.timing import validate_words
 
 
 class EngineTimelineTest(unittest.TestCase):
+    def test_custom_scene_compositions_keep_storyboard_timing(self):
+        scenes = [
+            {"start": 0, "end": 2.5, "composition": "compositions/scenes/one/index.html"},
+            {"start": 2.5, "end": 5},
+            {"start": 5, "end": 9, "composition": "compositions/scenes/three/index.html"},
+        ]
+        self.assertEqual(custom_scene_clips(scenes), [
+            {"id": "custom-scene-01", "composition": "compositions/scenes/one/index.html", "timelineStart": 0.0, "durationSeconds": 2.5},
+            {"id": "custom-scene-03", "composition": "compositions/scenes/three/index.html", "timelineStart": 5.0, "durationSeconds": 4.0},
+        ])
+
     def test_render_assets_reuse_stable_ids_and_relink_changed_media(self):
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)

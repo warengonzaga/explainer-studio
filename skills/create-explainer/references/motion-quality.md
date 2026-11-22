@@ -39,17 +39,14 @@ These are project recommendations for story planning, art direction, animation a
 
 ## Native AIVEE composition route
 
-Studio's `visual_cues` and PNG layer manifests support preset staged entrances. When the storyboard needs expressive motion, author a project-specific AIVEE composition using its existing HTML/SVG and GSAP support. Merely staggering parts of a finished diagram does not fulfill object travel, transformations, or drawn-path choreography. Use `python <plugin-root>/scripts/explainer.py engine -- ...` to invoke the globally installed AIVEE CLI without relying on a repository checkout being on `PATH`.
+Studio's `visual_cues` and PNG layer manifests support preset entrances. For custom travel, transformations, or drawn paths, add an editable HTML/GSAP composition to the storyboard scene so Studio still supplies narration timing, avatar states, captions, approval, and rendering.
 
-1. Create a new AIVEE project or a separate copy of the prior editable project. Preserve source narration, avatar artwork, approved avatar timing, and existing outputs. Give the new project its own metadata and output filename.
-2. Author the visual scene in the AIVEE project's `index.html`, using local assets and the project's GSAP dependency. Build original SVG or HTML objects as independently addressable elements with stable IDs. Use a paused GSAP timeline registered as `window.__timelines.root`, with the root's dimensions and duration matching the AIVEE project.
-3. Keep time deterministic. Animate from narration timestamps; avoid CSS animation loops, wall-clock timers, and unseeded randomness. Include every scene's initial state so seeking directly to a later time produces the correct frame.
-4. Mount the approved avatar states using their existing timing. Add the narration with a stable media ID, source path, start time, and duration. Reuse reviewed word timestamps for captions. Keep visual changes within the approved story beats; obtain approval if the narrative or storyboard meaning changes.
-5. Run `python <plugin-root>/scripts/explainer.py engine -- lint <engine-project>`. Resolve errors and actionable warnings before rendering. Inspect browser frames at cue boundaries and during the transitions, including a direct seek into later scenes.
-6. Render through AIVEE with `python <plugin-root>/scripts/explainer.py engine -- render <engine-project> <new-output.mp4> standard`. Use the host's configured local browser when needed. This route renders the authored composition; `timeline render` generates its HTML from timeline data and can replace a hand-authored `index.html`.
-7. Review actual encoded frames and transitions, then check media dimensions, frame rate, duration, and narration alignment. Deliver the MP4 and editable AIVEE project alongside the Studio project. Keep any topic-specific builder or authoring instructions with that project.
+The repository includes an [animated Reel scene starter](../../../library/templates/reel-shot-plan/README.md) with editable enter, move, counter, route-change, and loop-back beats.
 
-The automatic Studio cue renderer remains a simpler route. Native compositions are authored for the film; this guide does not imply that the generic CLI automatically supplies the approved Reel's choreography.
+1. Create `compositions/scenes/<name>/index.html` in the AIVEE project. Keep any scene assets in that folder and use original HTML/SVG with stable element IDs. Set the root composition's dimensions to the project canvas and its duration to the scene duration; register a paused GSAP timeline for that root in `window.__timelines`.
+2. Keep animation deterministic and seekable: derive animation times from the scene's narration beats, avoid CSS loops and wall-clock timers, and define initial state for every animated element.
+3. Attach the scene with `scene-composition <project> <scene-number> compositions/scenes/<name>/index.html --json`. This records the scene-folder contents and clears storyboard approval. Reattach and review the storyboard after changing any file in that folder.
+4. Render a Studio preview and inspect transitions, captions, presenter overlap, and portrait safe zones. Studio places the custom composition below its avatar and captions. A custom composition is trusted project code and runs in the local AIVEE render browser.
 
 ## Review before delivery
 

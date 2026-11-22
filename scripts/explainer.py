@@ -1,9 +1,10 @@
 """Run the bundled engine directly from a plugin checkout."""
 
-from pathlib import Path
+import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 def in_managed_venv(home: Path, prefix: Path) -> bool:
@@ -11,6 +12,22 @@ def in_managed_venv(home: Path, prefix: Path) -> bool:
     venv = os.path.normcase((home / "venv").resolve())
     current = os.path.normcase(Path(prefix).resolve())
     return venv == current
+
+
+def _exit_incomplete_environment() -> None:
+    """Tell the caller to bootstrap. --json stays on the shared result schema."""
+    message = "The managed Studio environment is incomplete; run `explainer bootstrap`."
+    if "--json" not in sys.argv[1:]:
+        print(message, file=sys.stderr)
+        return
+    command_name = next((token for token in sys.argv[1:] if not token.startswith("-")), "")
+    print(json.dumps({
+        "ok": False,
+        "command": command_name,
+        "data": {},
+        "next_steps": ["explainer bootstrap --json"],
+        "error": message,
+    }, ensure_ascii=False))
 
 
 def launch() -> None:
@@ -23,7 +40,7 @@ def launch() -> None:
             command = [str(managed_python), str(Path(__file__).resolve()), *sys.argv[1:]]
             raise SystemExit(subprocess.run(command).returncode)
         if sys.argv[1:2] != ["bootstrap"]:
-            print("The managed Studio environment is incomplete; run `explainer bootstrap`.", file=sys.stderr)
+            _exit_incomplete_environment()
             raise SystemExit(1)
 
     sys.path.insert(0, str(plugin_root / "src"))

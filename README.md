@@ -9,6 +9,7 @@ Explainer Studio is an agent plugin for creating narrated explainer videos from 
 - Chat guided first run for brand, language, narration preference, and avatar.
 - Use your own narration or connected ElevenLabs, Higgsfield, or Suno capabilities.
 - Create and review word timed storyboards before rendering.
+- Use custom per-scene HTML and GSAP compositions in Studio renders.
 - Use the bundled Emo robot presenter or prepare a custom sprite pack.
 - Start with the bundled presenter, a clean motion-graphics style, and phrase captions in a speech bubble beside the avatar.
 - Compose scenes, avatar states, and narration in an editable AIVEE timeline.
@@ -29,6 +30,12 @@ For creative planning and animation authoring, our project recommendations are:
 Select the model in your chat environment. These recommendations guide creative work; rendering uses the locally installed AIVEE CLI. Every video still needs visual review.
 
 The visual quality baseline is a deliberately composed scene with readable artwork, narration-timed object movement, and coherent visual progression. By default, show short narration-synced phrases in a speech bubble beside the presenter, with its tail pointing toward the avatar; keep it clear of the main visual and Reels controls. AIVEE provides this as a configurable caption layout. See the [motion quality guide](skills/create-explainer/references/motion-quality.md) for authoring and review requirements.
+
+For a reusable animated scene starter with timed signal movement, a counter, route change, and loop-back, see [`library/templates/reel-shot-plan`](library/templates/reel-shot-plan/README.md). It attaches to the existing storyboard approval and preview flow.
+
+Create a portrait project with `explainer init <project> --format reel`. This sets both the Studio project and AIVEE canvas to 1080 × 1920 at 30 fps. Rendering a Reel project automatically uses portrait placement and safe-zone checks; existing landscape projects can still opt in with `render --portrait`.
+
+Caption presets are saved once in the creator profile and applied by default to new and existing projects. The default uses bold white captions, a yellow keyword highlight, a soft shadow, and Bebas Neue for scene hooks. Set the caption font, keyword color, placement, or hook font with `setup --caption-font`, `--caption-keyword-color`, `--caption-x`, `--caption-y`, `--caption-width`, `--caption-height`, and `--hook-font`. Placement values are normalized from 0 to 1; portrait renders still enforce the Reels safe area. Studio warns when a configured font is missing or cannot be checked. Project and scene caption options can override the profile preset.
 
 ## 🚀 Quick start
 
@@ -74,11 +81,45 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 1. Choose a topic, audience, length, and language; review the script in chat.
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
-3. Review the storyboard and approve it in chat.
-4. Render a preview through AIVEE, request revisions, then render and inspect the final video. AIVEE owns all composition and rendering.
+3. Review the storyboard in chat. For a custom scene, author `compositions/scenes/<name>/index.html` in the AIVEE project and attach it with `scene-composition <project> <scene-number> compositions/scenes/<name>/index.html --json`; review and approve the updated storyboard.
+4. Render a preview through AIVEE, request revisions, then render and inspect the final video. `check <project> <video>` reports ffprobe details, scans every encoded frame for one-frame A-B-A flashes, and checks attached portrait compositions at 15 samples per second. It also runs speech sync when faster-whisper is installed; otherwise run `sync-check` separately. AIVEE owns all composition and rendering.
 5. Share the MP4 and AIVEE-owned project folder; the editable timeline, registered media, renders, and Studio workflow files are kept together in the project. Studio workflow files live under `studio-data/explainer/`.
 
+`status <project>` reports whether voice, words, storyboard, approved, preview, and final are done, the path of each existing file, and the next safe command. Preview and final paths are the default files in `renders/` (`draft-engine.mp4`, `draft-portrait-engine.mp4`, `final-engine.mp4`, and `final-portrait-engine.mp4`).
+
+`scene-composition <project> <scene-number> <html-path>` attaches a project-owned AIVEE HTML/GSAP composition to a storyboard scene. Keep the composition and its local assets in `compositions/scenes/<name>/`; it replaces that scene's `visual_cues` and renders on its narration timing under Studio's avatar and captions. The command records a hash of the scene folder and clears storyboard approval. Reattach and review the storyboard after changing any file in that folder.
+
+To continue an approved Studio avatar performance in a separate native AIVEE project, run `explainer export-avatar <studio-project> <aivee-project>`. Studio writes transparent pose/mouth/blink sprites, `timing.json`, `words.json`, and a narration copy under the target project's `studio-data/explainer/avatar-exports/`; it registers the narration and sprites with AIVEE. The command requires an approved storyboard and preserves the Studio canvas placement in `avatar_placement`.
+
+`safe-check <project>` samples visible text and graphic bounds in every attached portrait HTML composition against the approved Reels safe area. `check <project> <video>` includes the same composition check and scans decoded frames for isolated A-B-A flashes. The flicker scan targets one-frame flashes; it does not replace watching the encoded video and reviewing its motion.
+
+`stills <project> --at 0.6,4.9 --sheet` exports full-resolution PNGs at the requested seconds from the latest final render (or latest preview if no final exists). Pass `--video <path>` to choose a specific render, `--output <directory>` to choose a destination, and `--sheet` to add a timestamp-labeled contact sheet. Existing files are never overwritten.
+
+`init <project> --theme-from <image...>` derives the new project's background, ink, and accent colors from one or more PNG, JPEG, or other Pillow-readable images. Transparent pixels are sampled over white. The palette is stored with the project and does not change the saved profile.
+
+`transcribe <project> --model small --language en` creates word timings from narration. It uses the project's `studio-data/explainer/script.txt` as an optional recognition hint; pass `--script <path>` to use another text file. The script guides recognition but does not force words or timings to match it. Choose another faster-whisper model size with `--model` when accuracy or local compute needs differ.
+
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
+
+## JSON output
+
+Add `--json` to a command to print one object on stdout. On `engine`, the flag may come before or after the engine arguments.
+
+```json
+{
+  "ok": true,
+  "command": "storyboard",
+  "data": {"scenes": 4, "review_gate": "storyboard"},
+  "next_steps": [],
+  "error": null
+}
+```
+
+`ok` is true when the command finished. `command` is the subcommand name. `data` is that command's result. `next_steps` lists shell-quoted commands that are safe to run now, and each one includes `--json`. `error` is null on success and a string when the command failed. A failed command still prints this object and exits non-zero. A usage error with `--json` prints the same object and exits 2.
+
+`next_steps` never includes `init`, `approve`, `setup --avatar-pack`, or a final `render` (a render without `--preview`). Those wait for a chat review. `data.review_gate` is `storyboard` or `preview` while that review is open. A draft preview lists `contact-sheet` as its next step. `init` leaves `next_steps` empty when it did not receive a narration file (`data.voice_attached` is false). Without `--json`, commands print the same plain text as before, and errors go to stderr.
+
+`status` uses the same object. `data.project` is the project path. `data.voice_attached` is true when the narration file is present. `data.stages` has `voice`, `words`, `storyboard`, `approved`, `preview`, and `final`. Each stage has `done` and `paths`. `paths` lists files that exist. The approved stage uses the storyboard file. While narration is missing, or a storyboard review is open, `next_steps` is empty. After approval, the next command is `check` when a final file exists, `contact-sheet` when only a preview exists (`review_gate` is `preview`), and `render --preview` when neither render exists.
 
 ## 🛠️ Development
 
