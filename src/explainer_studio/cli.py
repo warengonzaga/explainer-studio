@@ -487,6 +487,11 @@ def init(args) -> None:
     from .engine import create_aivee_project, register_asset
 
     profile = load_profile()
+    colors = profile["colors"]
+    if args.theme_from:
+        from .theme import extract_theme
+
+        colors = extract_theme([Path(value).expanduser().resolve() for value in args.theme_from])
     for label in ("voice", "script"):
         value = getattr(args, label)
         if value:
@@ -513,7 +518,7 @@ def init(args) -> None:
     project = {
         "version": 1, "title": args.title or root.name, "brand": profile["brand"],
         "language": profile["language"], "voice": voice, "avatar_pack": None,
-        "colors": profile["colors"], "width": 1920, "height": 1080, "fps": 60,
+        "colors": colors, "width": 1920, "height": 1080, "fps": 60,
         "music": None, "logo": None, "cta": profile.get("cta", ""),
     }
     if profile.get("logo"):
@@ -1001,6 +1006,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--title")
     p.add_argument("--script")
     p.add_argument("--voice")
+    p.add_argument("--theme-from", nargs="+", metavar="IMAGE", help="derive the project palette from one or more images")
     p.set_defaults(handler=init)
     p = add_command(sub, json_flags, "attach-voice", help="attach a narrated take")
     p.add_argument("project")
