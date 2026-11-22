@@ -76,12 +76,14 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 1. Choose a topic, audience, length, and language; review the script in chat.
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
 3. Review the storyboard in chat. For a custom scene, author `compositions/scenes/<name>/index.html` in the AIVEE project and attach it with `scene-composition <project> <scene-number> compositions/scenes/<name>/index.html --json`; review and approve the updated storyboard.
-4. Render a preview through AIVEE, request revisions, then render and inspect the final video. AIVEE owns all composition and rendering.
+4. Render a preview through AIVEE, request revisions, then render and inspect the final video. `check <project> <video>` reports ffprobe details, scans every encoded frame for one-frame A-B-A flashes, and checks attached portrait compositions at 15 samples per second. It also runs speech sync when faster-whisper is installed; otherwise run `sync-check` separately. AIVEE owns all composition and rendering.
 5. Share the MP4 and AIVEE-owned project folder; the editable timeline, registered media, renders, and Studio workflow files are kept together in the project. Studio workflow files live under `studio-data/explainer/`.
 
 `status <project>` reports whether voice, words, storyboard, approved, preview, and final are done, the path of each existing file, and the next safe command. Preview and final paths are the default files in `renders/` (`draft-engine.mp4`, `draft-portrait-engine.mp4`, `final-engine.mp4`, and `final-portrait-engine.mp4`).
 
 `scene-composition <project> <scene-number> <html-path>` attaches a project-owned AIVEE HTML/GSAP composition to a storyboard scene. Keep the composition and its local assets in `compositions/scenes/<name>/`; it replaces that scene's `visual_cues` and renders on its narration timing under Studio's avatar and captions. The command records a hash of the scene folder and clears storyboard approval. Reattach and review the storyboard after changing any file in that folder.
+
+`safe-check <project>` samples visible text and graphic bounds in every attached portrait HTML composition against the approved Reels safe area. `check <project> <video>` includes the same composition check and scans decoded frames for isolated A-B-A flashes. The flicker scan targets one-frame flashes; it does not replace watching the encoded video and reviewing its motion.
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
