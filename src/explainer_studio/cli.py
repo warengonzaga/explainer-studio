@@ -800,6 +800,13 @@ def import_words_command(args) -> None:
     emit(args, {"words": count}, [command_step("storyboard", str(root))], f"{count} words imported")
 
 
+def status_command(args) -> None:
+    from .status import format_status, project_status
+
+    data, steps = project_status(Path(args.project))
+    emit(args, data, steps, *format_status(data, steps))
+
+
 def storyboard_command(args) -> None:
     from .timing import build_storyboard
 
@@ -908,6 +915,9 @@ def main(argv: list[str] | None = None) -> int:
     p = add_command(sub, json_flags, "storyboard", help="align script paragraphs to speech")
     p.add_argument("project")
     p.set_defaults(handler=storyboard_command)
+    p = add_command(sub, json_flags, "status", help="show project stage, files, and the next command")
+    p.add_argument("project")
+    p.set_defaults(handler=status_command)
     p = add_command(sub, json_flags, "approve", help="mark a reviewed storyboard approved")
     p.add_argument("project")
     p.set_defaults(handler=approve)
