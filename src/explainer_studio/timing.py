@@ -94,6 +94,32 @@ def import_words(root: Path, source: Path) -> int:
     return len(words)
 
 
+_HEADLINE_WORDS = 7
+_CLOSER = "\"'”’)]"
+_DANGLING = ",;:—-"
+
+
+def _ends_phrase(word: str) -> bool:
+    core = word.rstrip(_CLOSER)
+    if core.endswith(("?", "!", "…", "...")):
+        return True
+    return core.endswith(".") and "." not in core[:-1] and len(core) > 1
+
+
+def scene_headline(paragraph: str, limit: int = _HEADLINE_WORDS) -> str:
+    """Shorten a scene paragraph on a phrase or word boundary."""
+    words = paragraph.split()
+    if not words:
+        return ""
+    window = words[:limit]
+    ends = [index for index, word in enumerate(window) if _ends_phrase(word)]
+    chosen = window[: ends[-1] + 1] if ends else window
+    headline = " ".join(chosen)
+    if ends:
+        return headline
+    return headline.rstrip(_DANGLING)
+
+
 def build_storyboard(root: Path) -> dict:
     project = read_json(studio_file(root, "project.json"))
     voice = project_file(root, project["voice"])
@@ -130,7 +156,7 @@ def build_storyboard(root: Path) -> dict:
         boundaries.append(round((left + right) / 2, 3))
     boundaries.append(round(duration, 3))
     for index, paragraph in enumerate(paragraphs):
-        headline = " ".join(paragraph.split()[:7]).rstrip(".,;:!?—-")
+        headline = scene_headline(paragraph)
         scenes.append({
             "start": boundaries[index], "end": boundaries[index + 1],
             "headline": headline, "body": paragraph,
