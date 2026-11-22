@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .audio import mouth_at, mouth_track, phonetic_mouth_track
+from .captions import caption_options, DEFAULT_HOOK_FONT, font_stack
 from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_data, studio_home, write_json
 from .timing import storyboard_hash, validate_storyboard, validate_words
 
@@ -476,8 +477,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         type_scale = min(width / 1080, height / 1920)
         is_portrait = height > width
         colors = profile.get("colors", {})
-        caption = project.get("caption", {})
-        if not isinstance(caption, dict):
+        project_caption = project.get("caption", {})
+        if not isinstance(project_caption, dict):
             raise ProjectError("project caption settings must be an object")
         bubble = portrait_regions()["bubble"] if is_portrait else {"x": 0.31, "y": 0.46, "width": 0.65, "height": 0.12}
         text = portrait_caption() if is_portrait else {"fontSize": 48, "wordsPerCaption": 6, "wordsPerLine": 3}
@@ -490,10 +491,10 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             "color": colors.get("ink", "#172236"), "backgroundColor": "#FFFFFF",
             "bubble": {"tailSide": "left", "tailPosition": 0.35, "tailSizePixels": max(8, round(26 * type_scale)), "cornerRadiusPixels": max(8, round(28 * type_scale))},
             **({"paddingPixels": max(0, round(text["paddingPixels"] * type_scale))} if is_portrait else {}),
-            **caption,
+            **caption_options(profile, project),
         }
         caption_clips = []
-        scene_caption_fields = {"x", "y", "width", "height", "fontSize", "color", "backgroundColor", "wordHighlight", "wordHighlightColor", "wordHighlightAnimation", "bubble"}
+        scene_caption_fields = {"x", "y", "width", "height", "fontSize", "fontFamily", "fontWeight", "color", "backgroundColor", "wordHighlight", "wordHighlightColor", "wordHighlightAnimation", "textShadow", "textOutline", "bubble"}
         for scene_index, scene in enumerate(scenes):
             scene_start, scene_end = float(scene["start"]), float(scene["end"])
             scene_words = [item for item in words if scene_start <= float(item["start"]) < scene_end]
@@ -509,6 +510,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             if not isinstance(scene_caption, dict):
                 raise ProjectError("scene caption settings must be an object")
             scene_options = {key: value for key, value in scene_caption.items() if key in scene_caption_fields}
+            if "fontFamily" in scene_options:
+                scene_options["fontFamily"] = font_stack(scene_options["fontFamily"])
             options = {**caption_options, **scene_options}
             if isinstance(caption_options.get("bubble"), dict) and isinstance(scene_caption.get("bubble"), dict):
                 options["bubble"] = {**caption_options["bubble"], **scene_caption["bubble"]}
@@ -545,7 +548,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 "durationSeconds": float(scene["end"]) - float(scene["start"]),
                 "text": scene.get("visual_label") or scene["headline"],
                 "x": 0.1 if is_portrait else 0.08, "y": 0.16, "width": 0.72 if is_portrait else 0.82, "height": 0.08,
-                "fontSize": max(8, round(54 * type_scale)), "fontWeight": 800, "color": colors.get("ink", "#172236"),
+                "fontSize": max(8, round(54 * type_scale)), "fontFamily": font_stack(profile.get("hook_font_family") or DEFAULT_HOOK_FONT),
+                "fontWeight": 800, "color": colors.get("ink", "#172236"),
                 "backgroundColor": "transparent", "textAlign": "center", "verticalAlign": "center",
                 "keyframes": [
                     {"time": 0, "properties": {"y": 0.18, "opacity": 0}},
