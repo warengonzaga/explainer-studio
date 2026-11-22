@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .common import ProjectError, file_hash, project_file, read_json, studio_data
-from .timing import storyboard_hash
+from .timing import scene_composition_hash, storyboard_hash
 
 STAGES = ("voice", "words", "storyboard", "approved", "preview", "final")
 PREVIEW_RENDERS = ("draft-engine.mp4", "draft-portrait-engine.mp4")
@@ -34,8 +34,8 @@ def project_status(root: Path) -> tuple[dict, list[str]]:
     final = _render_paths(root, FINAL_RENDERS)
     voice_done = voice is not None and voice.is_file()
     words_done = _words_ready(words)
-    storyboard_done = _storyboard_current(board, script, voice if voice_done else None)
-    approved_done = _approval_current(board, script, voice if voice_done else None, words)
+    storyboard_done = _storyboard_current(board, script, voice if voice_done else None, root)
+    approved_done = _approval_current(board, script, voice if voice_done else None, words, root)
     stages = {
         "voice": _stage(voice_done, [voice] if voice_done else []),
         "words": _stage(words_done, [words] if words.is_file() else []),
@@ -106,24 +106,42 @@ def _same_hash(path: Path | None, expected) -> bool:
     return path is not None and path.is_file() and expected == file_hash(path)
 
 
-def _storyboard_current(board, script: Path, voice: Path | None) -> bool:
+def _storyboard_current(board, script: Path, voice: Path | None, root: Path) -> bool:
     if not isinstance(board, dict) or board.get("version") != 1:
         return False
     scenes = board.get("scenes")
     source = board.get("source")
     if not isinstance(scenes, list) or not scenes or not isinstance(source, dict):
         return False
-    return _same_hash(script, source.get("script_sha256")) and _same_hash(voice, source.get("voice_sha256"))
+    if not _same_hash(script, source.get("script_sha256")) or not _same_hash(voice, source.get("voice_sha256")):
+        return False
+    try:
+        return all(
+            project_file(root, scene["composition"]).is_file()
+            for scene in scenes if scene.get("composition")
+        )
+    except (KeyError, ProjectError):
+        return False
 
 
-def _approval_current(board, script: Path, voice: Path | None, words: Path) -> bool:
-    if not _storyboard_current(board, script, voice) or board.get("approved") is not True:
+def _approval_current(board, script: Path, voice: Path | None, words: Path, root: Path) -> bool:
+    if not _storyboard_current(board, script, voice, root) or not _compositions_current(board, root) or board.get("approved") is not True:
         return False
     if not _same_hash(words, board.get("source", {}).get("words_sha256")):
         return False
     try:
         return board.get("approval_hash") == storyboard_hash(board)
     except (TypeError, KeyError, ValueError):
+        return False
+
+
+def _compositions_current(board, root: Path) -> bool:
+    try:
+        return all(
+            scene_composition_hash(project_file(root, scene["composition"])) == scene.get("composition_sha256")
+            for scene in board.get("scenes", []) if scene.get("composition")
+        )
+    except (KeyError, ProjectError):
         return False
 
 

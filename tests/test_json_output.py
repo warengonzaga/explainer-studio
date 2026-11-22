@@ -164,6 +164,48 @@ class JsonOutputTest(unittest.TestCase):
         self.assertIn("Acme", out)
         self.assertNotIn('"command"', out)
 
+    def test_scene_composition_invalidates_approval_and_tracks_all_local_files(self):
+        from explainer_studio.common import ProjectError, file_hash
+        from explainer_studio.timing import scene_composition_hash, validate_storyboard
+
+        root = self.home / "film"
+        data = root / "studio-data" / "explainer"
+        data.mkdir(parents=True)
+        voice = root / "assets" / "voice.mp3"
+        voice.parent.mkdir()
+        voice.write_bytes(b"voice")
+        (data / "project.json").write_text(json.dumps({"voice": "assets/voice.mp3"}), encoding="utf-8")
+        (data / "script.txt").write_text("Hello", encoding="utf-8")
+        words = data / "words.json"
+        words.write_text(json.dumps([{"text": "Hello", "start": 0.1, "end": 0.5}]), encoding="utf-8")
+        composition_dir = root / "compositions" / "scenes" / "scene-01"
+        composition_dir.mkdir(parents=True)
+        html = composition_dir / "index.html"
+        html.write_text("<div>Scene</div>", encoding="utf-8")
+        (composition_dir / "shape.svg").write_text("<svg/>", encoding="utf-8")
+        board = {
+            "version": 1, "approved": True,
+            "approval_hash": "stale",
+            "scenes": [{"start": 0, "end": 1, "headline": "Hello"}],
+            "source": {"script_sha256": file_hash(data / "script.txt"), "voice_sha256": file_hash(voice), "words_sha256": file_hash(words)},
+        }
+        (data / "storyboard.json").write_text(json.dumps(board), encoding="utf-8")
+        with patch("explainer_studio.timing.probe_duration", return_value=1):
+            code, out, err = self.invoke("scene-composition", str(root), "1", "compositions/scenes/scene-01/index.html", "--json")
+            self.assertEqual(code, 0, err or out)
+            payload = json.loads(out)
+            self.assert_result(payload, "scene-composition", True)
+            self.assertEqual(payload["data"]["review_gate"], "storyboard")
+            self.assertEqual(payload["next_steps"], [])
+            updated = json.loads((data / "storyboard.json").read_text(encoding="utf-8"))
+            self.assertFalse(updated["approved"])
+            self.assertNotIn("approval_hash", updated)
+            self.assertEqual(updated["scenes"][0]["composition_sha256"], scene_composition_hash(html))
+            validate_storyboard(root, updated, 1)
+            (composition_dir / "shape.svg").write_text("<svg><circle/></svg>", encoding="utf-8")
+            with self.assertRaisesRegex(ProjectError, "composition is missing or changed"):
+                validate_storyboard(root, updated, 1)
+
     def test_doctor_json_uses_the_schema(self):
         code, out, err = self.invoke("doctor", "--json")
         self.assertEqual(err, "")

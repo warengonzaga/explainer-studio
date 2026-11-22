@@ -319,6 +319,14 @@ def _check_reels_box(x: float, y: float, width: float, height: float, label: str
         raise ProjectError(f"Reels {label} is outside the safe area; reposition it before rendering")
 
 
+def custom_scene_clips(scenes: list[dict]) -> list[dict]:
+    return [
+        {"id": f"custom-scene-{index + 1:02d}", "composition": scene["composition"],
+         "timelineStart": float(scene["start"]), "durationSeconds": float(scene["end"]) - float(scene["start"])}
+        for index, scene in enumerate(scenes) if scene.get("composition")
+    ]
+
+
 def portrait_regions() -> dict[str, dict[str, float]]:
     """Default portrait visual, speech bubble, and avatar boxes inside the Reels safe area."""
     from .avatar import PORTRAIT_AVATAR
@@ -418,6 +426,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         visual_index = 0
         visual_region = portrait_regions()["visual"] if portrait else None
         for scene in scenes:
+            if scene.get("composition"):
+                continue
             for cue in scene.get("visual_cues", []):
                 if visual_region is not None:
                     cue = {**visual_region, **cue}
@@ -510,6 +520,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                     _check_reels_box(float(clip["x"]), float(clip["y"]), float(clip["width"]), float(clip["height"]), "caption")
                 caption_clips.append(clip)
         captions = {"id": "captions", "kind": "overlay", "order": 5, "clips": caption_clips}
+        custom_clips = custom_scene_clips(scenes)
         brand_clip = {
             "id": "studio-brand", "timelineStart": 0, "durationSeconds": duration,
             "text": project.get("brand", "Explainer Studio"),
@@ -588,6 +599,8 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
                 {"id": "narration", "assetId": "studio-narration", "sourceIn": 0, "sourceOut": duration, "timelineStart": 0, "durationSeconds": duration},
             ]},
         ]
+        if custom_clips:
+            timeline["tracks"].insert(0, {"id": "studio-custom-scenes", "kind": "overlay", "order": 1, "clips": custom_clips})
         if music:
             music_duration = probe_duration(music_copy)
             music_clip_duration = min(duration, music_duration)

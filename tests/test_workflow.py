@@ -149,6 +149,11 @@ if (args[0] === 'capabilities') {
                 "duration": .8, "x": .2, "y": .2, "width": .4, "height": .2,
             }]
             board_path.write_text(json.dumps(board), encoding="utf-8")
+            composition_dir = project / "compositions" / "scenes" / "scene-01"
+            composition_dir.mkdir(parents=True)
+            (composition_dir / "index.html").write_text("<div>Custom scene</div>", encoding="utf-8")
+            (composition_dir / "visual.svg").write_text("<svg/>", encoding="utf-8")
+            cli("scene-composition", project, "1", "compositions/scenes/scene-01/index.html")
             cli("approve", project)
             old_scene = json.loads(board_path.read_text(encoding="utf-8"))["scenes"][0]
             old_duration = old_scene["end"] - old_scene["start"]
@@ -183,6 +188,9 @@ if (args[0] === 'capabilities') {
             retimed_data = retimed / "studio-data" / "explainer"
             new_board = json.loads((retimed_data / "storyboard.json").read_text(encoding="utf-8"))
             new_scene = new_board["scenes"][0]
+            self.assertEqual(new_scene["composition"], "compositions/scenes/scene-01/index.html")
+            self.assertTrue((retimed / new_scene["composition"]).is_file())
+            self.assertTrue((retimed / "compositions" / "scenes" / "scene-01" / "visual.svg").is_file())
             new_duration = new_scene["end"] - new_scene["start"]
             old_cue = old_scene["visual_cues"][0]
             new_cue = new_scene["visual_cues"][0]

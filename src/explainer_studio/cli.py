@@ -517,7 +517,7 @@ def retime(args) -> None:
     import tempfile
 
     from .engine import create_aivee_project, list_project_assets, register_asset
-    from .timing import build_storyboard, transcribe, validate_storyboard, validate_words
+    from .timing import build_storyboard, scene_composition_hash, transcribe, validate_storyboard, validate_words
 
     source = Path(args.project).expanduser().resolve()
     source_data = studio_data(source)
@@ -652,6 +652,27 @@ def retime(args) -> None:
         for key in ("headline", "pose", "asset", "visual_label"):
             if key in old:
                 new[key] = copy_asset(old[key]) if key == "asset" else old[key]
+        if old.get("composition"):
+            relative = old["composition"]
+            source_composition = project_file(source, relative)
+            target_composition = project_file(target, relative)
+            source_dir, target_dir = source_composition.parent, target_composition.parent
+            if target_dir.exists():
+                if any(item.is_symlink() for item in target_dir.rglob("*")):
+                    raise ProjectError(f"retime target scene composition must not contain symlinks: {target_dir}")
+                for source_file in source_dir.rglob("*"):
+                    if not source_file.is_file():
+                        continue
+                    target_file = target_dir / source_file.relative_to(source_dir)
+                    if target_file.exists() and file_hash(target_file) != file_hash(source_file):
+                        raise ProjectError(f"retime target has a different scene composition file: {target_file}")
+                    target_file.parent.mkdir(parents=True, exist_ok=True)
+                    if not target_file.exists():
+                        shutil.copy2(source_file, target_file)
+            else:
+                shutil.copytree(source_dir, target_dir)
+            new["composition"] = relative
+            new["composition_sha256"] = scene_composition_hash(target_composition)
         old_duration = float(old["end"]) - float(old["start"])
         new_duration = float(new["end"]) - float(new["start"])
         if old_duration > 0:
@@ -668,6 +689,37 @@ def retime(args) -> None:
         {"project": str(target), "review_gate": "storyboard"},
         [],
         f"retimed project created: {target}; review and approve the new storyboard",
+    )
+
+
+def scene_composition(args) -> None:
+    root = Path(args.project).expanduser().resolve()
+    data = studio_data(root)
+    board = read_json(data / "storyboard.json")
+    if not isinstance(board, dict) or not isinstance(board.get("scenes"), list):
+        raise ProjectError("generate a storyboard before attaching a scene composition")
+    if args.scene < 1 or args.scene > len(board["scenes"]):
+        raise ProjectError(f"scene must be between 1 and {len(board['scenes'])}")
+    if not isinstance(board["scenes"][args.scene - 1], dict):
+        raise ProjectError(f"scene {args.scene} must be an object")
+    path = project_file(root, args.html)
+    relative_parts = path.relative_to(root).parts
+    if relative_parts[:2] != ("compositions", "scenes") or path.name != "index.html" or not path.is_file():
+        raise ProjectError("scene composition must be compositions/scenes/<name>/index.html")
+    scene = board["scenes"][args.scene - 1]
+    scene["composition"] = path.relative_to(root).as_posix()
+    from .timing import scene_composition_hash, validate_storyboard
+
+    scene["composition_sha256"] = scene_composition_hash(path)
+    board["approved"] = False
+    board.pop("approval_hash", None)
+    validate_storyboard(root, board)
+    write_json(data / "storyboard.json", board)
+    emit(
+        args,
+        {"scene": args.scene, "composition": scene["composition"], "review_gate": "storyboard"},
+        [],
+        f"scene {args.scene} composition attached; review and approve the storyboard again",
     )
 
 
@@ -918,6 +970,11 @@ def main(argv: list[str] | None = None) -> int:
     p = add_command(sub, json_flags, "status", help="show project stage, files, and the next command")
     p.add_argument("project")
     p.set_defaults(handler=status_command)
+    p = add_command(sub, json_flags, "scene-composition", help="attach project HTML and GSAP to one storyboard scene")
+    p.add_argument("project")
+    p.add_argument("scene", type=int, help="one-based scene number")
+    p.add_argument("html", help="project path: compositions/scenes/<name>/index.html")
+    p.set_defaults(handler=scene_composition)
     p = add_command(sub, json_flags, "approve", help="mark a reviewed storyboard approved")
     p.add_argument("project")
     p.set_defaults(handler=approve)
