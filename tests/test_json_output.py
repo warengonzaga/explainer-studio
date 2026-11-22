@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from explainer_studio.cli import (
+    _aivee_can_be_installed,
     _doctor_steps,
     _step_crosses_review_gate,
     _ungated,
@@ -101,9 +102,16 @@ class JsonOutputTest(unittest.TestCase):
         self.assertEqual(_doctor_steps([], True), [])
         self.assertEqual(_doctor_steps([], False), [command_step("setup")])
         self.assertEqual(
-            _doctor_steps(["Pillow", "AIVEE (run `explainer install-engine`)"], False),
+            _doctor_steps(["Pillow", "AIVEE (run `explainer install-engine`)"], False, install_aivee=True),
             [command_step("bootstrap"), command_step("install-engine")],
         )
+        self.assertEqual(_doctor_steps(["AIVEE (run `explainer install-engine`)"], True), [])
+        self.assertEqual(
+            _doctor_steps(["Node.js 22+", "AIVEE (run `explainer install-engine`)"], False, install_aivee=True),
+            [],
+        )
+        self.assertTrue(_aivee_can_be_installed("AIVEE is not installed; run `explainer install-engine` to install it globally"))
+        self.assertFalse(_aivee_can_be_installed("The global AIVEE installation is incompatible or missing render requirements"))
         self.assertEqual(_doctor_steps(["Python 3.11+", "Pillow"], False), [])
         self.assertEqual(_doctor_steps(["Node.js 22+", "npm", "AIVEE (run `explainer install-engine`)"], False), [])
 
@@ -170,6 +178,45 @@ class JsonOutputTest(unittest.TestCase):
             self.assertTrue(payload["error"])
         else:
             self.assertEqual(code, 0)
+
+    def test_doctor_json_installs_aivee_only_when_it_is_absent(self):
+        import subprocess
+
+        from explainer_studio.common import ProjectError
+
+        def which(name):
+            return f"/usr/bin/{name}"
+
+        def run(args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, stdout="v22.0.0\n")
+
+        cases = (
+            (
+                "AIVEE is not installed; run `explainer install-engine` to install it globally",
+                [command_step("install-engine")],
+            ),
+            (
+                "The global AIVEE installation is incompatible or missing render requirements; run `npm install --global aivee@latest` and retry",
+                [],
+            ),
+            (
+                "A global AIVEE package exists but its CLI is invalid: /tmp/aivee; repair or remove it before installing AIVEE again",
+                [],
+            ),
+        )
+        for message, steps in cases:
+            with (
+                patch("explainer_studio.cli.shutil.which", side_effect=which),
+                patch("explainer_studio.cli.subprocess.run", side_effect=run),
+                patch("explainer_studio.engine.resolve_aivee", side_effect=ProjectError(message)),
+                patch("explainer_studio.engine._browser_env", return_value={"HYPERFRAMES_BROWSER_PATH": "/usr/bin/chrome"}),
+            ):
+                code, out, err = self.invoke("doctor", "--json")
+            self.assertEqual(code, 1, message)
+            self.assertEqual(err, "", message)
+            payload = json.loads(out)
+            self.assert_result(payload, "doctor", False)
+            self.assertEqual(payload["next_steps"], steps, message)
 
     def test_storyboard_and_render_json_errors_exit_nonzero(self):
         missing = str(self.home / "missing-project")

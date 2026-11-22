@@ -361,6 +361,9 @@ def doctor(args) -> None:
     except ProjectError as exc:
         lines.append(f"aivee: NOT READY ({exc})")
         missing.append("AIVEE (run `explainer install-engine`)")
+        install_aivee = _aivee_can_be_installed(str(exc))
+    else:
+        install_aivee = False
     from .engine import _browser_env
     browser = _browser_env(studio_home() / "browser-cache").get("HYPERFRAMES_BROWSER_PATH")
     checks["render_browser"] = browser
@@ -375,7 +378,7 @@ def doctor(args) -> None:
     checks["rhubarb"] = str(Path(rhubarb).expanduser().resolve()) if rhubarb else None
     lines.append(f"rhubarb: {rhubarb_label}")
     checks["missing"] = missing
-    steps = _doctor_steps(missing, path.is_file())
+    steps = _doctor_steps(missing, path.is_file(), install_aivee=install_aivee)
     if missing:
         if not args.json:
             for line in lines:
@@ -384,12 +387,17 @@ def doctor(args) -> None:
     emit(args, checks, steps, *lines)
 
 
-def _doctor_steps(missing: list[str], profile_ready: bool) -> list[str]:
+def _aivee_can_be_installed(message: str) -> bool:
+    """True only when install-engine can install a missing AIVEE."""
+    return message.startswith("AIVEE is not installed")
+
+
+def _doctor_steps(missing: list[str], profile_ready: bool, *, install_aivee: bool = False) -> list[str]:
     steps = []
     if "Pillow" in missing and "Python 3.11+" not in missing:
         steps.append(command_step("bootstrap"))
     node_blocked = any(item in {"Node.js 22+", "npm"} for item in missing)
-    if any(item.startswith("AIVEE") for item in missing) and not node_blocked:
+    if install_aivee and not node_blocked:
         steps.append(command_step("install-engine"))
     if not missing and not profile_ready:
         steps.append(command_step("setup"))
