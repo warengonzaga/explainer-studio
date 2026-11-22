@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width={{PROJECT_WIDTH}},height={{PROJECT_HEIGHT}}">
+  <title>Explainer Studio animated scene starter</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    #{{COMPOSITION_ID}} { position: relative; width: 100%; height: 100%; overflow: hidden; container-type: size; color: #172236; font-family: Arial, sans-serif; }
+    .eyebrow { position: absolute; top: 25%; left: 12%; color: #426BEB; font-size: 1.8cqw; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .node { position: absolute; top: 36%; display: grid; align-content: center; justify-items: start; width: 20%; height: 9%; padding: 1.4cqw; border: 2px solid #D8E0F0; border-radius: 1.6cqw; background: #FFFFFF; box-shadow: 0 1.2cqw 3cqw #17223620; opacity: 0; }
+    .node--source { left: 12%; }
+    .node--process { left: 40%; border-color: #426BEB; }
+    .node--result { left: 68%; width: 16%; }
+    .node-label { color: #6E7890; font-size: 1.35cqw; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .node-value { margin-top: .5cqw; font-size: 2.1cqw; font-weight: 800; line-height: 1; }
+    .route { position: absolute; top: 40.4%; width: 8%; height: .45%; border-radius: 99px; background: #B7C4DE; transform-origin: left center; }
+    .route--one { left: 32%; }
+    .route--two { left: 60%; }
+    .packet-track { position: absolute; top: 36%; left: 0; width: 100%; height: 9%; overflow: visible; }
+    .packet { fill: #FFE45C; stroke: #426BEB; stroke-width: .6; }
+    .counter { position: absolute; top: 48%; left: 40%; color: #426BEB; font-size: 2.3cqw; font-weight: 800; opacity: 0; }
+    .counter-label { margin-left: .6cqw; color: #6E7890; font-size: 1.3cqw; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .route-bad { position: absolute; top: 55%; left: 40%; width: 25%; height: .5%; border-radius: 99px; background: #D85858; opacity: 0; }
+    .route-good { position: absolute; top: 55%; left: 40%; width: 25%; height: .5%; border-radius: 99px; background: #19856B; transform: scaleX(0); transform-origin: left center; }
+    .loopback { position: absolute; inset: 58% 18% auto; width: 62%; height: 10%; overflow: visible; }
+    .loopback path { fill: none; stroke: #19856B; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+    .footer-note { position: absolute; top: 71%; left: 12%; color: #6E7890; font-size: 1.4cqw; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main id="{{COMPOSITION_ID}}" data-composition-id="{{COMPOSITION_ID}}" data-start="0" data-duration="{{SCENE_DURATION}}" data-width="{{PROJECT_WIDTH}}" data-height="{{PROJECT_HEIGHT}}">
+    <div class="eyebrow">Replace with the scene idea</div>
+    <div class="node node--source"><span class="node-label">Start</span><span class="node-value">Input</span></div>
+    <div class="node node--process"><span class="node-label">Change</span><span class="node-value">Process</span></div>
+    <div class="node node--result"><span class="node-label">Result</span><span class="node-value">Output</span></div>
+    <div class="route route--one"></div>
+    <div class="route route--two"></div>
+    <svg class="packet-track" viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true">
+      <circle class="packet" id="packet" cx="32" cy="8" r="1.4" />
+    </svg>
+    <div class="counter"><span id="sample-count">0</span><span class="counter-label">replace with a meaningful count</span></div>
+    <div class="route-bad"></div>
+    <div class="route-good"></div>
+    <svg class="loopback" viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true">
+      <path id="loopback-path" pathLength="1" d="M96 2 C96 14 84 14 72 14 H20 C8 14 4 11 4 3 M4 3 L1 7 M4 3 L8 7" />
+    </svg>
+    <div class="footer-note">Replace, simplify, or remove each sample beat.</div>
+  </main>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const root = document.getElementById("{{COMPOSITION_ID}}");
+    const duration = Number(root.dataset.duration);
+    const at = (fraction) => duration * fraction;
+    const count = { value: 0 };
+    const timeline = gsap.timeline({ paused: true });
+
+    timeline.fromTo(".node--source", { autoAlpha: 0, x: -32 }, { autoAlpha: 1, x: 0, duration: at(.1), ease: "power2.out" }, at(.08));
+    timeline.fromTo(".node--process", { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: at(.1), ease: "power2.out" }, at(.2));
+    timeline.to("#packet", { attr: { cx: 40 }, duration: at(.12), ease: "power1.inOut" }, at(.22));
+    timeline.fromTo(".node--result", { autoAlpha: 0, x: 24 }, { autoAlpha: 1, x: 0, duration: at(.1), ease: "power2.out" }, at(.34));
+    timeline.to("#packet", { attr: { cx: 68 }, duration: at(.12), ease: "power1.inOut" }, at(.36));
+    timeline.fromTo(".counter", { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: at(.08), ease: "power2.out" }, at(.4));
+    timeline.to(count, { value: 3, duration: at(.2), roundProps: "value", onUpdate: () => { document.getElementById("sample-count").textContent = String(count.value); } }, at(.43));
+    timeline.to(".route-bad", { autoAlpha: 1, scaleX: .55, duration: at(.08), ease: "power1.out" }, at(.62));
+    timeline.to(".route-good", { scaleX: 1, duration: at(.12), ease: "power2.out" }, at(.72));
+    timeline.to("#loopback-path", { strokeDashoffset: 0, duration: at(.16), ease: "power1.inOut" }, at(.82));
+    timeline.to({}, { duration }, 0);
+    window.__timelines["{{COMPOSITION_ID}}"] = timeline;
+  </script>
+</body>
+</html>
