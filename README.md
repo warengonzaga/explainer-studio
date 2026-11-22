@@ -85,6 +85,8 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 `safe-check <project>` samples visible text and graphic bounds in every attached portrait HTML composition against the approved Reels safe area. `check <project> <video>` includes the same composition check and scans decoded frames for isolated A-B-A flashes. The flicker scan targets one-frame flashes; it does not replace watching the encoded video and reviewing its motion.
 
+`stills <project> --at 0.6,4.9 --sheet` exports full-resolution PNGs at the requested seconds from the latest final render (or latest preview if no final exists). Pass `--video <path>` to choose a specific render, `--output <directory>` to choose a destination, and `--sheet` to add a timestamp-labeled contact sheet. Existing files are never overwritten.
+
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
 ## JSON output
