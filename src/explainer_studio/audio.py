@@ -19,6 +19,41 @@ RHUBARB_MOUTH_MAP = {
     "A": "closed", "B": "small", "C": "open", "D": "wide",
     "E": "small", "F": "small", "G": "open", "H": "open", "X": "rest",
 }
+_MOUTHS = ("rest", "closed", "small", "open", "wide")
+# Enter a louder shape at the first value, and leave it only below the second.
+_MOUTH_GATES = ((.10, .07), (.22, .16), (.42, .34), (.72, .58))
+_MOUTH_HOLD = 2
+
+
+def _mouth_rank(level: float, current: int) -> int:
+    rank = current
+    while rank < len(_MOUTH_GATES) and level >= _MOUTH_GATES[rank][0]:
+        rank += 1
+    while rank > 0 and level < _MOUTH_GATES[rank - 1][1]:
+        rank -= 1
+    return rank
+
+
+def mouth_states(levels: list[float]) -> list[str]:
+    """Map normalized amplitudes to mouth states, holding each shape for at least two samples."""
+    if not levels:
+        return ["rest"]
+    rank = _mouth_rank(levels[0], 0)
+    states = [_MOUTHS[rank]]
+    age = 1
+    for level in levels[1:]:
+        target = _mouth_rank(level, rank)
+        if target != rank and age < _MOUTH_HOLD:
+            states.append(_MOUTHS[rank])
+            age += 1
+            continue
+        if target != rank:
+            rank = target
+            age = 1
+        else:
+            age += 1
+        states.append(_MOUTHS[rank])
+    return states
 
 
 def mouth_track(voice: Path, rate: int = 15) -> list[str]:
@@ -39,11 +74,7 @@ def mouth_track(voice: Path, rate: int = 15) -> list[str]:
         return ["rest"]
     high = sorted(levels)[min(len(levels) - 1, round(len(levels) * .95))]
     scale = max(high, .008)
-    states = []
-    for level in levels:
-        v = level / scale
-        states.append("rest" if v < .10 else "closed" if v < .22 else "small" if v < .42 else "open" if v < .72 else "wide")
-    return states
+    return mouth_states([level / scale for level in levels])
 
 
 def mouth_at(states: list[str], t: float, rate: int = 15) -> str:
