@@ -80,6 +80,24 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
+## JSON output
+
+Add `--json` to a command to print one object on stdout. On `engine`, the flag may come before or after the engine arguments.
+
+```json
+{
+  "ok": true,
+  "command": "storyboard",
+  "data": {"scenes": 4, "review_gate": "storyboard"},
+  "next_steps": [],
+  "error": null
+}
+```
+
+`ok` is true when the command finished. `command` is the subcommand name. `data` is that command's result. `next_steps` lists shell-quoted commands that are safe to run now, and each one includes `--json`. `error` is null on success and a string when the command failed. A failed command still prints this object and exits non-zero. A usage error with `--json` prints the same object and exits 2.
+
+`next_steps` never includes `init`, `approve`, `setup --avatar-pack`, or a final `render` (a render without `--preview`). Those wait for a chat review. `data.review_gate` is `storyboard` or `preview` while that review is open. A draft preview lists `contact-sheet` as its next step. `init` leaves `next_steps` empty when it did not receive a narration file (`data.voice_attached` is false). Without `--json`, commands print the same plain text as before, and errors go to stderr.
+
 ## 🛠️ Development
 
 ```bash
