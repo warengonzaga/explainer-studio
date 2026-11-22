@@ -80,6 +80,22 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 
+## JSON output
+
+Add `--json` to a command to print one object on stdout:
+
+```json
+{
+  "ok": true,
+  "command": "storyboard",
+  "data": {"scenes": 4},
+  "next_steps": ["explainer approve <project>"],
+  "error": null
+}
+```
+
+`ok` is true when the command finished. `command` is the subcommand name. `data` is that command's result. `next_steps` lists command strings to run next; path arguments are shell-quoted. `error` is null on success and a string when the command failed. A failed command still prints this object and exits non-zero. Without `--json`, commands print the same plain text as before, and errors go to stderr. Argparse usage errors stay plain text.
+
 ## 🛠️ Development
 
 ```bash

@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -15,20 +16,53 @@ from pathlib import Path
 from .common import ProjectError, command, file_hash, probe_duration, project_file, read_json, studio_data, studio_file, studio_home, write_json
 
 
+class ResultError(ProjectError):
+    def __init__(self, message: str, data: dict | None = None, next_steps: list[str] | None = None):
+        super().__init__(message)
+        self.data = data or {}
+        self.next_steps = list(next_steps or [])
+
+
+def command_payload(command: str, data: dict, next_steps: list[str], *, ok: bool = True, error: str | None = None) -> dict:
+    """Stable result for --json: ok, command, data, next_steps, error."""
+    return {"ok": ok, "command": command, "data": data, "next_steps": list(next_steps), "error": error}
+
+
+def emit(args, data: dict, next_steps: list[str], *lines: str) -> None:
+    if args.json:
+        print(json.dumps(command_payload(args.command, data, next_steps), ensure_ascii=False))
+        return
+    for line in lines:
+        print(line)
+
+
+def add_command(subparsers, json_flags, name: str, **kwargs):
+    return subparsers.add_parser(name, parents=[json_flags], **kwargs)
+
+
+def command_step(name: str, *args: str) -> str:
+    """One next-step command, with arguments quoted for a shell."""
+    return " ".join(["explainer", name, *(shlex.quote(arg) for arg in args)])
+
+
 def load_profile() -> dict:
     path = studio_home() / "profile.json"
     if not path.is_file():
-        raise ProjectError("profile not set up; run `explainer setup` through the plugin")
+        raise ResultError(
+            "profile not set up; run `explainer setup` through the plugin",
+            {},
+            ["explainer setup"],
+        )
     return read_json(path)
 
 
-def show_profile(_) -> None:
+def show_profile(args) -> None:
     profile = load_profile().copy()
     if "voice_provider_default" not in profile:
         profile["voice_provider_default"] = "elevenlabs" if profile.get("voice_route") == "elevenlabs" else "ask"
     profile.pop("voice_route", None)
     profile.pop("voice_id", None)
-    print(json.dumps(profile, indent=2))
+    emit(args, profile, ["explainer init <project>"], json.dumps(profile, indent=2))
 
 
 def _replace_avatar_pack(source: Path, destination: Path) -> Path | None:
@@ -75,7 +109,7 @@ def bootstrap(args) -> None:
     if result.returncode:
         detail = (result.stderr or result.stdout).strip()
         raise ProjectError(f"could not install Studio dependencies: {detail[-1200:]}")
-    print(f"managed Studio environment ready: {python}")
+    emit(args, {"python": str(python)}, ["explainer doctor"], f"managed Studio environment ready: {python}")
 
 
 def avatar_preview_command(args) -> None:
@@ -83,13 +117,15 @@ def avatar_preview_command(args) -> None:
 
     root = Path(args.project).resolve()
     output = Path(args.output).resolve() if args.output else root / "renders" / "avatar-preview.png"
-    print(preview_avatar(root, output))
+    path = preview_avatar(root, output)
+    emit(args, {"output": str(path)}, [command_step("render", str(root), "--preview")], str(path))
 
 
 def avatar_preview_pack_command(args) -> None:
     from .avatar import preview_pack
 
-    print(preview_pack(Path(args.pack).resolve(), Path(args.output).resolve()))
+    path = preview_pack(Path(args.pack).resolve(), Path(args.output).resolve())
+    emit(args, {"output": str(path)}, [command_step("setup", "--avatar-pack", str(Path(args.pack).resolve()))], str(path))
 
 
 def avatar_validate_command(args) -> None:
@@ -97,7 +133,13 @@ def avatar_validate_command(args) -> None:
 
     pack = Path(args.pack).expanduser().resolve()
     manifest = validate_pack(pack.parent, pack.name)
-    print(f"valid avatar pack: {manifest['name']} ({manifest['id']}@{manifest['version']})")
+    message = f"valid avatar pack: {manifest['name']} ({manifest['id']}@{manifest['version']})"
+    emit(
+        args,
+        {"name": manifest["name"], "id": manifest["id"], "version": manifest["version"]},
+        [command_step("setup", "--avatar-pack", str(pack))],
+        message,
+    )
 
 
 def contact_sheet_command(args) -> None:
@@ -105,16 +147,20 @@ def contact_sheet_command(args) -> None:
 
     root = Path(args.project).resolve()
     output = Path(args.output).resolve() if args.output else root / "renders" / "contact-sheet.jpg"
-    print(contact_sheet(root, Path(args.video).resolve(), output))
+    sheet = contact_sheet(root, Path(args.video).resolve(), output)
+    video = str(Path(args.video).resolve())
+    emit(args, {"output": str(sheet)}, [command_step("sync-check", str(root), video)], str(sheet))
 
 
 def sync_check_command(args) -> None:
     from .quality import sync_check
 
-    print(sync_check(
-        Path(args.project).resolve(), Path(args.video).resolve(), args.model, args.language,
+    root = Path(args.project).resolve()
+    report = sync_check(
+        root, Path(args.video).resolve(), args.model, args.language,
         Path(args.render_words).resolve() if args.render_words else None,
-    ))
+    )
+    emit(args, report, [], str(report))
 
 
 def setup(args) -> None:
@@ -217,27 +263,35 @@ def setup(args) -> None:
         staged_profile.unlink(missing_ok=True)
     if avatar_backup:
         shutil.rmtree(avatar_backup)
-    print(f"profile saved: {target}")
-    print(f"AIVEE home: {aivee_home}")
+    emit(
+        args,
+        {"profile": str(target), "aivee_home": str(aivee_home)},
+        ["explainer init <project>"],
+        f"profile saved: {target}",
+        f"AIVEE home: {aivee_home}",
+    )
 
 
-def doctor(_) -> None:
+def doctor(args) -> None:
     from .engine import resolve_aivee
 
     missing = []
-    print(f"python: {sys.version.split()[0]}")
+    lines = [f"python: {sys.version.split()[0]}"]
+    checks = {"python": sys.version.split()[0], "pillow": None, "faster_whisper": False, "aivee": None, "profile": None}
     if sys.version_info < (3, 11):
         missing.append("Python 3.11+")
     try:
         import PIL
-        print(f"pillow: {PIL.__version__}")
+        checks["pillow"] = PIL.__version__
+        lines.append(f"pillow: {PIL.__version__}")
     except ImportError:
-        print("pillow: MISSING (run `explainer bootstrap`)")
+        lines.append("pillow: MISSING (run `explainer bootstrap`)")
         missing.append("Pillow")
     for name in ("ffmpeg", "ffprobe"):
-        path = shutil.which(name)
-        print(f"{name}: {path or 'MISSING'}")
-        if not path:
+        found = shutil.which(name)
+        checks[name] = found
+        lines.append(f"{name}: {found or 'MISSING'}")
+        if not found:
             missing.append(name)
     node, npm = shutil.which("node"), shutil.which("npm")
     node_version = ""
@@ -245,8 +299,10 @@ def doctor(_) -> None:
         result = subprocess.run([node, "--version"], capture_output=True, text=True)
         node_version = result.stdout.strip() if result.returncode == 0 else "unknown version"
     node_label = f"{node} ({node_version})" if node else "MISSING"
-    print(f"node: {node_label}")
-    print(f"npm: {npm or 'MISSING'}")
+    checks["node"] = node_label
+    checks["npm"] = npm
+    lines.append(f"node: {node_label}")
+    lines.append(f"npm: {npm or 'MISSING'}")
     try:
         node_major = int(node_version.removeprefix("v").split(".", 1)[0])
     except ValueError:
@@ -257,34 +313,59 @@ def doctor(_) -> None:
         missing.append("npm")
     try:
         import faster_whisper  # noqa: F401
-        print("faster-whisper: available")
+        checks["faster_whisper"] = True
+        lines.append("faster-whisper: available")
     except ImportError:
-        print("faster-whisper: optional, needed for automatic word timing")
+        lines.append("faster-whisper: optional, needed for automatic word timing")
     path = studio_home() / "profile.json"
-    print(f"profile: {path if path.is_file() else 'not set up'}")
+    lines.append(f"profile: {path if path.is_file() else 'not set up'}")
+    checks["profile"] = str(path) if path.is_file() else None
     try:
         _, package_root = resolve_aivee()
         manifest_path = Path(package_root) / "package.json"
         version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
-        print(f"aivee: {version} ({package_root})")
+        checks["aivee"] = version
+        lines.append(f"aivee: {version} ({package_root})")
     except ProjectError as exc:
-        print(f"aivee: NOT READY ({exc})")
+        lines.append(f"aivee: NOT READY ({exc})")
         missing.append("AIVEE (run `explainer install-engine`)")
     from .engine import _browser_env
     browser = _browser_env(studio_home() / "browser-cache").get("HYPERFRAMES_BROWSER_PATH")
-    print(f"render browser: {browser or 'MISSING (install Chrome or Edge)'}")
+    checks["render_browser"] = browser
+    lines.append(f"render browser: {browser or 'MISSING (install Chrome or Edge)'}")
     if not browser:
         missing.append("Chrome or Edge")
     profile = read_json(path) if path.is_file() else {}
     rhubarb = os.environ.get("RHUBARB_PATH") or profile.get("rhubarb_path") or shutil.which("rhubarb")
     if rhubarb and not Path(rhubarb).expanduser().is_file():
         rhubarb = shutil.which(rhubarb)
-    print(f"rhubarb: {Path(rhubarb).expanduser().resolve() if rhubarb else 'optional; amplitude lip sync will be used'}")
+    rhubarb_label = str(Path(rhubarb).expanduser().resolve()) if rhubarb else "optional; amplitude lip sync will be used"
+    checks["rhubarb"] = str(Path(rhubarb).expanduser().resolve()) if rhubarb else None
+    lines.append(f"rhubarb: {rhubarb_label}")
+    checks["missing"] = missing
+    steps = _doctor_steps(missing, path.is_file())
     if missing:
-        raise ProjectError("required setup is incomplete: " + ", ".join(missing))
+        if not args.json:
+            for line in lines:
+                print(line)
+        raise ResultError("required setup is incomplete: " + ", ".join(missing), checks, steps)
+    emit(args, checks, steps, *lines)
 
 
-def install_engine(_) -> None:
+def _doctor_steps(missing: list[str], profile_ready: bool) -> list[str]:
+    steps = []
+    if any(item in {"Python 3.11+", "Pillow"} for item in missing):
+        steps.append("explainer bootstrap")
+    if any(item.startswith(("Node.js", "npm", "AIVEE")) for item in missing):
+        steps.append("explainer install-engine")
+    if not missing and not profile_ready:
+        steps.append("explainer setup")
+    if not missing and profile_ready:
+        steps.append("explainer init <project>")
+    return steps
+
+
+def install_engine(args) -> None:
     from .engine import ensure_aivee
 
     command, package_root = ensure_aivee()
@@ -294,7 +375,8 @@ def install_engine(_) -> None:
         raise ProjectError(f"AIVEE installation could not be verified: {detail[-1200:]}")
     manifest_path = Path(package_root) / "package.json"
     version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
-    print(f"AIVEE {version} ready from the global npm installation: {package_root}")
+    message = f"AIVEE {version} ready from the global npm installation: {package_root}"
+    emit(args, {"version": version, "package": str(package_root)}, ["explainer doctor"], message)
 
 
 def engine_command(args) -> int:
@@ -305,8 +387,19 @@ def engine_command(args) -> int:
         arguments = arguments[1:]
     if not arguments:
         raise ProjectError("provide an AIVEE command after `explainer engine --`")
-    command, _ = resolve_aivee()
-    return subprocess.run([*command, *arguments]).returncode
+    program, _ = resolve_aivee()
+    if not args.json:
+        return subprocess.run([*program, *arguments]).returncode
+    result = subprocess.run([*program, *arguments], capture_output=True, text=True)
+    detail = (result.stderr or result.stdout).strip()
+    data = {"returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+    if result.returncode:
+        print(json.dumps(command_payload(
+            args.command, data, [], ok=False, error=detail or f"AIVEE exited {result.returncode}",
+        ), ensure_ascii=False))
+        return result.returncode
+    emit(args, data, [])
+    return 0
 
 
 def init(args) -> None:
@@ -352,7 +445,8 @@ def init(args) -> None:
             raise ProjectError(f"saved avatar pack not found: {source}")
         project["avatar_pack"] = str(source.resolve())
     write_json(data / "project.json", project)
-    print(f"project created: {root}")
+    step = command_step("transcribe", str(root)) if args.voice else command_step("attach-voice", str(root), "<voice-file>")
+    emit(args, {"project": str(root)}, [step], f"project created: {root}")
 
 
 def attach_voice(args) -> None:
@@ -372,7 +466,8 @@ def attach_voice(args) -> None:
     asset = register_asset(root, source, "narration")
     project["voice"] = asset["path"]
     write_json(data / "project.json", project)
-    print(f"voice attached: {root / asset['path']}")
+    voice = root / asset["path"]
+    emit(args, {"voice": str(voice)}, [command_step("transcribe", str(root))], f"voice attached: {voice}")
 
 
 def retime(args) -> None:
@@ -526,7 +621,12 @@ def retime(args) -> None:
     validate_storyboard(target, board)
     write_json(studio_file(target, "storyboard.json"), board)
     (data / marker_name).unlink(missing_ok=True)
-    print(f"retimed project created: {target}; review and approve the new storyboard")
+    emit(
+        args,
+        {"project": str(target)},
+        [command_step("approve", str(target))],
+        f"retimed project created: {target}; review and approve the new storyboard",
+    )
 
 
 def attach_avatar(args) -> None:
@@ -550,7 +650,7 @@ def attach_avatar(args) -> None:
     project = read_json(data / "project.json")
     project["avatar_pack"] = str(target.resolve())
     write_json(data / "project.json", project)
-    print(f"avatar attached: {target}")
+    emit(args, {"project": str(target)}, [command_step("avatar-preview", str(target))], f"avatar attached: {target}")
 
 
 def approve(args) -> None:
@@ -566,7 +666,12 @@ def approve(args) -> None:
     board["approved"] = True
     board["approval_hash"] = storyboard_hash(board)
     write_json(data / "storyboard.json", board)
-    print(f"storyboard approved: {data / 'storyboard.json'}")
+    emit(
+        args,
+        {"storyboard": str(data / "storyboard.json")},
+        [command_step("render", str(root), "--preview")],
+        f"storyboard approved: {data / 'storyboard.json'}",
+    )
 
 
 def check(args) -> None:
@@ -602,7 +707,13 @@ def check(args) -> None:
     allowed = {full, (round(full[0] / 2), round(full[1] / 2)), (1080, 1920), (540, 960)}
     if size not in allowed:
         raise ProjectError(f"unexpected video size: {size[0]}x{size[1]}")
-    print(f"PASS: H.264/AAC {size[0]}x{size[1]}, {actual:.3f}s voice/video, {len(board['scenes'])} scenes")
+    message = f"PASS: H.264/AAC {size[0]}x{size[1]}, {actual:.3f}s voice/video, {len(board['scenes'])} scenes"
+    emit(
+        args,
+        {"video": str(output), "width": size[0], "height": size[1], "duration": round(actual, 3), "scenes": len(board["scenes"])},
+        [command_step("contact-sheet", str(root), str(output))],
+        message,
+    )
 
 
 def default_render_name(*, preview: bool, portrait: bool) -> str:
@@ -616,41 +727,59 @@ def render_engine_command(args) -> None:
     root = Path(args.project).resolve()
     profile = load_profile()
     target = Path(args.output).resolve() if args.output else root / "renders" / default_render_name(preview=args.preview, portrait=args.portrait)
-    print(render_with_engine(root, target, profile, preview=args.preview, portrait=args.portrait))
+    output = render_with_engine(root, target, profile, preview=args.preview, portrait=args.portrait)
+    if args.preview:
+        step = command_step("render", str(root), *(["--portrait"] if args.portrait else []))
+    else:
+        step = command_step("check", str(root), str(output))
+    emit(args, {"video": str(output), "preview": bool(args.preview), "portrait": bool(args.portrait)}, [step], str(output))
 
 
 def transcribe_command(args) -> None:
     from .timing import transcribe
 
-    print(f"{transcribe(Path(args.project).resolve(), args.model, args.language)} words timed")
+    root = Path(args.project).resolve()
+    count = transcribe(root, args.model, args.language)
+    emit(args, {"words": count}, [command_step("storyboard", str(root))], f"{count} words timed")
 
 
 def import_words_command(args) -> None:
     from .timing import import_words
 
-    print(f"{import_words(Path(args.project).resolve(), Path(args.file).resolve())} words imported")
+    root = Path(args.project).resolve()
+    count = import_words(root, Path(args.file).resolve())
+    emit(args, {"words": count}, [command_step("storyboard", str(root))], f"{count} words imported")
 
 
 def storyboard_command(args) -> None:
     from .timing import build_storyboard
 
-    print(f"{len(build_storyboard(Path(args.project).resolve())['scenes'])} scenes planned; review storyboard.json before approval")
+    root = Path(args.project).resolve()
+    count = len(build_storyboard(root)["scenes"])
+    emit(
+        args,
+        {"scenes": count, "storyboard": str(studio_file(root, "storyboard.json"))},
+        [command_step("approve", str(root))],
+        f"{count} scenes planned; review storyboard.json before approval",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="explainer", description="Create voice-timed explainer videos")
+    json_flags = argparse.ArgumentParser(add_help=False)
+    json_flags.add_argument("--json", action="store_true", help="print one JSON result on stdout")
     sub = parser.add_subparsers(dest="command", required=True)
-    p = sub.add_parser("doctor", help="check local tools")
+    p = add_command(sub, json_flags, "doctor", help="check local tools")
     p.set_defaults(handler=doctor)
-    p = sub.add_parser("bootstrap", help="create the managed Studio Python environment")
+    p = add_command(sub, json_flags, "bootstrap", help="create the managed Studio Python environment")
     p.add_argument("--transcribe", action="store_true", help="also install optional faster-whisper dependencies")
     p.set_defaults(handler=bootstrap)
-    p = sub.add_parser("install-engine", help="install AIVEE globally if missing, or verify the shared CLI")
+    p = add_command(sub, json_flags, "install-engine", help="install AIVEE globally if missing, or verify the shared CLI")
     p.set_defaults(handler=install_engine)
-    p = sub.add_parser("engine", help="run an AIVEE CLI command")
+    p = add_command(sub, json_flags, "engine", help="run an AIVEE CLI command")
     p.add_argument("arguments", nargs=argparse.REMAINDER)
     p.set_defaults(handler=engine_command)
-    p = sub.add_parser("setup", help="save a creator profile")
+    p = add_command(sub, json_flags, "setup", help="save a creator profile")
     p.add_argument("--brand")
     p.add_argument("--language")
     p.add_argument("--voice-provider-default", choices=["ask", "recording", "elevenlabs", "higgsfield", "suno"])
@@ -665,19 +794,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--accent")
     p.add_argument("--force", action="store_true")
     p.set_defaults(handler=setup)
-    p = sub.add_parser("profile", help="show saved non-secret settings")
+    p = add_command(sub, json_flags, "profile", help="show saved non-secret settings")
     p.set_defaults(handler=show_profile)
-    p = sub.add_parser("init", help="create a film project")
+    p = add_command(sub, json_flags, "init", help="create a film project")
     p.add_argument("project")
     p.add_argument("--title")
     p.add_argument("--script")
     p.add_argument("--voice")
     p.set_defaults(handler=init)
-    p = sub.add_parser("attach-voice", help="attach a narrated take")
+    p = add_command(sub, json_flags, "attach-voice", help="attach a narrated take")
     p.add_argument("project")
     p.add_argument("file")
     p.set_defaults(handler=attach_voice)
-    p = sub.add_parser("retime", help="create a new AIVEE project from a re-recorded take")
+    p = add_command(sub, json_flags, "retime", help="create a new AIVEE project from a re-recorded take")
     p.add_argument("project")
     p.add_argument("new_project")
     p.add_argument("--voice", required=True)
@@ -685,58 +814,58 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--model", default="small")
     p.add_argument("--language")
     p.set_defaults(handler=retime)
-    p = sub.add_parser("attach-avatar", help="attach an avatar sprite pack")
+    p = add_command(sub, json_flags, "attach-avatar", help="attach an avatar sprite pack")
     p.add_argument("project")
     p.add_argument("pack")
     p.set_defaults(handler=attach_avatar)
-    p = sub.add_parser("avatar-preview", help="make a contact sheet of avatar poses and mouth shapes")
+    p = add_command(sub, json_flags, "avatar-preview", help="make a contact sheet of avatar poses and mouth shapes")
     p.add_argument("project")
     p.add_argument("--output")
     p.set_defaults(handler=avatar_preview_command)
-    p = sub.add_parser("avatar-preview-pack", help="preview a custom pack before setup")
+    p = add_command(sub, json_flags, "avatar-preview-pack", help="preview a custom pack before setup")
     p.add_argument("pack")
     p.add_argument("--output", required=True)
     p.set_defaults(handler=avatar_preview_pack_command)
-    p = sub.add_parser("avatar-validate", help="validate a standardized avatar pack folder")
+    p = add_command(sub, json_flags, "avatar-validate", help="validate a standardized avatar pack folder")
     p.add_argument("pack")
     p.set_defaults(handler=avatar_validate_command)
-    p = sub.add_parser("transcribe", help="generate word timing from narration")
+    p = add_command(sub, json_flags, "transcribe", help="generate word timing from narration")
     p.add_argument("project")
     p.add_argument("--model", default="small")
     p.add_argument("--language")
     p.set_defaults(handler=transcribe_command)
-    p = sub.add_parser("import-words", help="use reviewed word timings from JSON")
+    p = add_command(sub, json_flags, "import-words", help="use reviewed word timings from JSON")
     p.add_argument("project")
     p.add_argument("file")
     p.set_defaults(handler=import_words_command)
-    p = sub.add_parser("storyboard", help="align script paragraphs to speech")
+    p = add_command(sub, json_flags, "storyboard", help="align script paragraphs to speech")
     p.add_argument("project")
     p.set_defaults(handler=storyboard_command)
-    p = sub.add_parser("approve", help="mark a reviewed storyboard approved")
+    p = add_command(sub, json_flags, "approve", help="mark a reviewed storyboard approved")
     p.add_argument("project")
     p.set_defaults(handler=approve)
-    p = sub.add_parser("render", help="render a preview or final MP4 through the AI Video Editing Engine")
+    p = add_command(sub, json_flags, "render", help="render a preview or final MP4 through the AI Video Editing Engine")
     p.add_argument("project")
     p.add_argument("--preview", action="store_true", help="render a draft before storyboard approval")
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
     p.set_defaults(handler=render_engine_command)
-    p = sub.add_parser("render-engine", help="render through the AI Video Editing Engine")
+    p = add_command(sub, json_flags, "render-engine", help="render through the AI Video Editing Engine")
     p.add_argument("project")
     p.add_argument("--preview", action="store_true", help="render a draft before storyboard approval")
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
     p.set_defaults(handler=render_engine_command)
-    p = sub.add_parser("check", help="validate a rendered video's basic timing")
+    p = add_command(sub, json_flags, "check", help="validate a rendered video's basic timing")
     p.add_argument("project")
     p.add_argument("video")
     p.set_defaults(handler=check)
-    p = sub.add_parser("contact-sheet", help="make a scene review sheet from a rendered video")
+    p = add_command(sub, json_flags, "contact-sheet", help="make a scene review sheet from a rendered video")
     p.add_argument("project")
     p.add_argument("video")
     p.add_argument("--output")
     p.set_defaults(handler=contact_sheet_command)
-    p = sub.add_parser("sync-check", help="compare rendered speech timings with source words")
+    p = add_command(sub, json_flags, "sync-check", help="compare rendered speech timings with source words")
     p.add_argument("project")
     p.add_argument("video")
     p.add_argument("--render-words")
@@ -748,7 +877,16 @@ def main(argv: list[str] | None = None) -> int:
         result = args.handler(args)
         return result if isinstance(result, int) else 0
     except (ProjectError, OSError, KeyError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(json.dumps(command_payload(
+                args.command,
+                getattr(exc, "data", {}) or {},
+                getattr(exc, "next_steps", []) or [],
+                ok=False,
+                error=str(exc),
+            ), ensure_ascii=False))
+        else:
+            print(f"error: {exc}", file=sys.stderr)
         return 1
 
 
