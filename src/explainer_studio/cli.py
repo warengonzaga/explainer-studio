@@ -605,13 +605,17 @@ def check(args) -> None:
     print(f"PASS: H.264/AAC {size[0]}x{size[1]}, {actual:.3f}s voice/video, {len(board['scenes'])} scenes")
 
 
+def default_render_name(*, preview: bool, portrait: bool) -> str:
+    suffix = "-portrait" if portrait else ""
+    return f"{'draft' if preview else 'final'}{suffix}-engine.mp4"
+
+
 def render_engine_command(args) -> None:
     from .engine import render_with_engine
 
     root = Path(args.project).resolve()
     profile = load_profile()
-    suffix = "-portrait" if args.portrait else ""
-    target = Path(args.output).resolve() if args.output else root / "renders" / f"{'preview' if args.preview else 'final'}{suffix}-engine.mp4"
+    target = Path(args.output).resolve() if args.output else root / "renders" / default_render_name(preview=args.preview, portrait=args.portrait)
     print(render_with_engine(root, target, profile, preview=args.preview, portrait=args.portrait))
 
 
@@ -713,13 +717,13 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(handler=approve)
     p = sub.add_parser("render", help="render a preview or final MP4 through the AI Video Editing Engine")
     p.add_argument("project")
-    p.add_argument("--preview", action="store_true")
+    p.add_argument("--preview", action="store_true", help="render a draft before storyboard approval")
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
     p.set_defaults(handler=render_engine_command)
     p = sub.add_parser("render-engine", help="render through the AI Video Editing Engine")
     p.add_argument("project")
-    p.add_argument("--preview", action="store_true")
+    p.add_argument("--preview", action="store_true", help="render a draft before storyboard approval")
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
     p.set_defaults(handler=render_engine_command)
