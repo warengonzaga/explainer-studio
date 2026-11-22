@@ -33,6 +33,8 @@ The visual quality baseline is a deliberately composed scene with readable artwo
 
 For a reusable animated scene starter with timed signal movement, a counter, route change, and loop-back, see [`library/templates/reel-shot-plan`](library/templates/reel-shot-plan/README.md). It attaches to the existing storyboard approval and preview flow.
 
+Create a portrait project with `explainer init <project> --format reel`. This sets both the Studio project and AIVEE canvas to 1080 × 1920 at 30 fps. Rendering a Reel project automatically uses portrait placement and safe-zone checks; existing landscape projects can still opt in with `render --portrait`.
+
 Caption presets are saved once in the creator profile and applied by default to new and existing projects. The default uses bold white captions, a yellow keyword highlight, a soft shadow, and Bebas Neue for scene hooks. Set the caption font, keyword color, placement, or hook font with `setup --caption-font`, `--caption-keyword-color`, `--caption-x`, `--caption-y`, `--caption-width`, `--caption-height`, and `--hook-font`. Placement values are normalized from 0 to 1; portrait renders still enforce the Reels safe area. Studio warns when a configured font is missing or cannot be checked. Project and scene caption options can override the profile preset.
 
 ## 🚀 Quick start

@@ -11,7 +11,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from explainer_studio.engine import ensure_aivee
+from explainer_studio.engine import create_aivee_project, ensure_aivee
 from explainer_studio.common import ProjectError
 
 
@@ -33,6 +33,21 @@ class AiveeRuntimeTest(unittest.TestCase):
             "node": {"supported": True},
             "render": {"requirementsAvailable": True, "outputs": {"mp4": {"defaultCodecAvailable": True}}},
         }), "")
+
+    def test_project_creation_passes_canvas_dimensions_and_frame_rate_to_aivee(self):
+        response = {"project": "/tmp/reel", "studioData": "/tmp/reel/studio-data/explainer"}
+        with patch("explainer_studio.engine.resolve_aivee", return_value=(["node", "aivee"], "/tmp/aivee")), patch(
+            "explainer_studio.engine._engine_cli", return_value=json.dumps(response),
+        ) as run:
+            result = create_aivee_project(
+                Path("/tmp/AIVEE"), "reel", 12.5, width=1080, height=1920, fps=30,
+            )
+
+        self.assertEqual(result, response)
+        self.assertEqual(run.call_args.args[2], [
+            "studio", "project", "create", "explainer", "reel", "--home", str(Path("/tmp/AIVEE")),
+            "1080x1920", "30", "12.500000",
+        ])
 
     def test_reuses_compatible_global_npm_install_independent_of_version(self):
         with tempfile.TemporaryDirectory() as temporary:
