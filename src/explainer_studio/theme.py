@@ -38,11 +38,11 @@ def extract_theme(image_paths: list[Path]) -> dict[str, str]:
             raise ProjectError(f"theme image not found: {path}")
         try:
             with Image.open(path) as source:
+                source.thumbnail((128, 128))
                 image = source.convert("RGBA")
                 white = Image.new("RGBA", image.size, "white")
                 white.alpha_composite(image)
                 sample = white.convert("RGB")
-                sample.thumbnail((128, 128))
                 colors = sample.quantize(colors=8).convert("RGB").getcolors(128 * 128)
         except (Image.DecompressionBombError, OSError, ValueError) as exc:
             raise ProjectError(f"could not read theme image: {path}") from exc
