@@ -7,6 +7,17 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ## [Unreleased]
 
 
+## [0.2.1] - 2026-11-22
+
+### Changed
+
+- install the fake AIVEE where npm root -g looks (#52)
+- smooth amplitude lip-sync mouth states (#49)
+- keep the portrait bubble off the visual (#45)
+- allow a draft preview before approval (#36)
+- trim headlines on phrase boundaries (#35)
+- detect a symlinked managed venv (#33)
+
 ## [0.2.0] - 2026-11-18
 
 ### Added
