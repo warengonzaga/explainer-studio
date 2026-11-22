@@ -9,6 +9,8 @@ Use the bundled CLI at `python <plugin-root>/scripts/explainer.py` (the plugin r
 
 For a vertical Reel, initialize the project with `init <project> --format reel`; the AIVEE canvas uses 1080 × 1920 at 30 fps, and its render uses portrait positioning automatically.
 
+When a user wants to continue an approved avatar performance in a separate native AIVEE project, run `export-avatar <studio-project> <aivee-project> --json`. It requires an approved storyboard and exports timed pose, mouth, and blink sprites together with the narration and word timings. Read `timing.json` and use its AIVEE `asset_path` values in the native scene.
+
 For creative planning and animation authoring, recommend Astra in Codex or Opus in Claude Code for best results. Sol and Sonnet are the respective minimum recommendations. The user selects the active model; do not silently switch models or block work based on this recommendation. Follow the [motion quality guide](references/motion-quality.md) for the approved presentation baseline and the native AIVEE composition route.
 
 ## Short-form video safe zones

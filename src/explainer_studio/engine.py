@@ -150,6 +150,24 @@ def avatar_intervals(keys: list[tuple[str, str, bool]], fps: int, duration: floa
     return intervals
 
 
+def avatar_keyframes(root: Path, project: dict, board: dict, profile: dict, duration: float, fps: int, work_dir: Path) -> list[tuple[str, str, bool]]:
+    """Build the per-frame avatar states shared by rendering and export."""
+    from .avatar import _is_blinking
+
+    if type(fps) is not int or not 1 <= fps <= 60 or not math.isfinite(duration) or duration <= 0:
+        raise ProjectError("invalid avatar timing duration or frame rate")
+    voice = project_file(root, project["voice"])
+    scenes = board["scenes"]
+    ends = [float(scene["end"]) for scene in scenes]
+    states = phonetic_mouth_track(voice, duration, work_dir, profile.get("rhubarb_path")) or mouth_track(voice)
+    keys = []
+    for frame in range(math.ceil(duration * fps)):
+        time = min(duration - 1e-6, frame / fps)
+        scene_index = min(len(scenes) - 1, bisect_right(ends, time))
+        keys.append((scenes[scene_index].get("pose", "idle"), mouth_at(states, time), _is_blinking(time)))
+    return keys
+
+
 def _engine_cli(command: list[str], cwd: Path, args: list[str], env: dict | None = None) -> str:
     process_env = os.environ.copy()
     if env:
@@ -379,7 +397,7 @@ def draft_mark_track(duration: float, *, portrait: bool, type_scale: float) -> d
 
 def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = False, portrait: bool = False) -> Path:
     from PIL import Image
-    from .avatar import _is_blinking, avatar_box, draw_avatar
+    from .avatar import avatar_box, draw_avatar
 
     root = root.resolve()
     data = studio_data(root)
@@ -409,13 +427,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     with tempfile.TemporaryDirectory(prefix="engine-export-", dir=scratch_root) as temporary:
         temporary = Path(temporary)
         scenes = board["scenes"]
-        ends = [float(scene["end"]) for scene in scenes]
-        states = phonetic_mouth_track(voice, duration, temporary, profile.get("rhubarb_path")) or mouth_track(voice)
-        keys = []
-        for frame in range(math.ceil(duration * fps)):
-            time = min(duration - 1e-6, frame / fps)
-            scene_index = min(len(scenes) - 1, bisect_right(ends, time))
-            keys.append((scenes[scene_index].get("pose", "idle"), mouth_at(states, time), _is_blinking(time)))
+        keys = avatar_keyframes(root, project, board, profile, duration, fps, temporary)
         intervals = avatar_intervals(keys, fps, duration)
 
         avatar_paths = {}

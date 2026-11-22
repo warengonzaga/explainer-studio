@@ -481,6 +481,25 @@ class JsonOutputTest(unittest.TestCase):
             width=1080, height=1920, fps=30,
         )
 
+    def test_export_avatar_has_stable_json_result(self):
+        result = {
+            "output": "/tmp/native/studio-data/explainer/avatar-exports/film",
+            "timing": "/tmp/native/studio-data/explainer/avatar-exports/film/timing.json",
+            "sprites": 2, "intervals": 8, "voice_asset": "assets/studio-narration.wav",
+            "words": "/tmp/native/studio-data/explainer/avatar-exports/film/words.json",
+        }
+        with patch("explainer_studio.avatar_export.export_avatar", return_value=result) as export, patch(
+            "explainer_studio.cli.load_profile", return_value={"brand": "Acme"},
+        ):
+            code, out, err = self.invoke("export-avatar", "--json", "/tmp/studio", "/tmp/native")
+
+        self.assertEqual((code, err), (0, ""))
+        payload = json.loads(out)
+        self.assert_result(payload, "export-avatar", True)
+        self.assertEqual(payload["data"], result)
+        self.assertEqual(payload["next_steps"], [])
+        export.assert_called_once_with(Path("/tmp/studio"), Path("/tmp/native"), {"brand": "Acme"})
+
     def test_render_infers_portrait_from_project_format(self):
         self.write_profile()
         root = self.home / "reel"
