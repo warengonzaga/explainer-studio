@@ -529,7 +529,11 @@ def init(args) -> None:
             if not source.is_file():
                 raise ProjectError(f"{label} file not found: {source}")
     duration = probe_duration(Path(args.voice).expanduser().resolve()) if args.voice else 10
-    result = create_aivee_project(Path(profile["aivee_home"]), args.project, duration)
+    width, height, fps = (1080, 1920, 30) if args.format == "reel" else (1920, 1080, 60)
+    result = create_aivee_project(
+        Path(profile["aivee_home"]), args.project, duration,
+        width=width, height=height, fps=fps,
+    )
     root = Path(result["project"]).resolve()
     data = Path(result["studioData"]).resolve()
     voice = "assets/voice.mp3"
@@ -546,9 +550,9 @@ def init(args) -> None:
     else:
         (data / "script.txt").write_text("", encoding="utf-8")
     project = {
-        "version": 1, "title": args.title or root.name, "brand": profile["brand"],
+        "version": 1, "format": args.format, "title": args.title or root.name, "brand": profile["brand"],
         "language": profile["language"], "voice": voice, "avatar_pack": None,
-        "colors": colors, "width": 1920, "height": 1080, "fps": 60,
+        "colors": colors, "width": width, "height": height, "fps": fps,
         "music": None, "logo": None, "cta": profile.get("cta", ""),
     }
     if profile.get("logo"):
@@ -689,7 +693,11 @@ def retime(args) -> None:
         if not isinstance(marker_data, dict) or marker_data.get("fingerprint") != fingerprint:
             raise ProjectError(f"AIVEE project already exists: {target}")
     else:
-        result = create_aivee_project(Path(profile["aivee_home"]), args.new_project, duration)
+        result = create_aivee_project(
+            Path(profile["aivee_home"]), args.new_project, duration,
+            width=int(project.get("width", 1920)), height=int(project.get("height", 1080)),
+            fps=int(project.get("fps", 60)),
+        )
         target, data = Path(result["project"]).resolve(), Path(result["studioData"]).resolve()
         write_json(data / marker_name, {"fingerprint": fingerprint})
 
@@ -934,11 +942,19 @@ def render_engine_command(args) -> None:
     from .captions import warn_missing_fonts
 
     root = Path(args.project).resolve()
+    project_path = studio_data(root) / "project.json"
+    portrait = args.portrait
+    if project_path.is_file():
+        project = read_json(project_path)
+        try:
+            portrait = portrait or int(project.get("height", 1080)) > int(project.get("width", 1920))
+        except (TypeError, ValueError):
+            pass
     profile = load_profile()
     font_warnings = warn_missing_fonts(profile, stream=False if args.json else None)
-    target = Path(args.output).resolve() if args.output else root / "renders" / default_render_name(preview=args.preview, portrait=args.portrait)
-    output = render_with_engine(root, target, profile, preview=args.preview, portrait=args.portrait)
-    data = {"video": str(output), "preview": bool(args.preview), "portrait": bool(args.portrait), "warnings": font_warnings}
+    target = Path(args.output).resolve() if args.output else root / "renders" / default_render_name(preview=args.preview, portrait=portrait)
+    output = render_with_engine(root, target, profile, preview=args.preview, portrait=portrait)
+    data = {"video": str(output), "preview": bool(args.preview), "portrait": bool(portrait), "warnings": font_warnings}
     if args.preview:
         data["review_gate"] = "preview"
         steps = [command_step("contact-sheet", str(root), str(output))]
@@ -1045,6 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--title")
     p.add_argument("--script")
     p.add_argument("--voice")
+    p.add_argument("--format", choices=["landscape", "reel"], default="landscape", help="canvas format (default: landscape)")
     p.add_argument("--theme-from", nargs="+", metavar="IMAGE", help="derive the project palette from one or more images")
     p.set_defaults(handler=init)
     p = add_command(sub, json_flags, "attach-voice", help="attach a narrated take")

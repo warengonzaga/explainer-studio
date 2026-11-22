@@ -459,6 +459,44 @@ class JsonOutputTest(unittest.TestCase):
         self.assertEqual(payload["next_steps"], [command_step("transcribe", payload["data"]["project"])])
         self.assertNotIn("<", payload["next_steps"][0])
 
+    def test_init_reel_format_sets_portrait_canvas_for_studio_and_aivee(self):
+        profile = {
+            "brand": "Acme", "language": "en", "aivee_home": str(self.home / "aivee"),
+            "colors": {"background": "#F6F8FC", "ink": "#172236", "accent": "#426BEB"},
+        }
+        (self.home / "profile.json").write_text(json.dumps(profile), encoding="utf-8")
+        root = self.home / "reel"
+        data = root / "studio-data" / "explainer"
+        data.mkdir(parents=True)
+        created = {"project": str(root), "studioData": str(data)}
+        with patch("explainer_studio.engine.create_aivee_project", return_value=created) as create:
+            code, out, err = self.invoke("init", "--json", "--format", "reel", root.name)
+
+        self.assertEqual((code, err), (0, ""))
+        self.assert_result(json.loads(out), "init", True)
+        project = json.loads((data / "project.json").read_text(encoding="utf-8"))
+        self.assertEqual((project["format"], project["width"], project["height"], project["fps"]), ("reel", 1080, 1920, 30))
+        create.assert_called_once_with(
+            Path(profile["aivee_home"]), root.name, 10,
+            width=1080, height=1920, fps=30,
+        )
+
+    def test_render_infers_portrait_from_project_format(self):
+        self.write_profile()
+        root = self.home / "reel"
+        data = root / "studio-data" / "explainer"
+        data.mkdir(parents=True)
+        (data / "project.json").write_text(json.dumps({"format": "reel", "width": 1080, "height": 1920, "fps": 30}), encoding="utf-8")
+        video = root / "renders" / "draft-portrait-engine.mp4"
+        with patch("explainer_studio.engine.render_with_engine", return_value=video) as render:
+            code, out, err = self.invoke("render", "--json", "--preview", str(root))
+
+        self.assertEqual((code, err), (0, ""))
+        payload = json.loads(out)
+        self.assertTrue(payload["data"]["portrait"])
+        self.assertEqual(payload["data"]["video"], str(video))
+        self.assertTrue(render.call_args.kwargs["portrait"])
+
     def test_avatar_pack_json_waits_for_approval(self):
         pack = self.home / "pack"
         pack.mkdir()

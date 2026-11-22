@@ -173,9 +173,20 @@ def setup_aivee_home(home: Path) -> dict:
         raise ProjectError("AIVEE returned an invalid workspace response") from exc
 
 
-def create_aivee_project(home: Path, slug: str, duration: float = 10) -> dict:
+def create_aivee_project(
+    home: Path,
+    slug: str,
+    duration: float = 10,
+    *,
+    width: int = 1920,
+    height: int = 1080,
+    fps: int = 60,
+) -> dict:
     command, _ = resolve_aivee()
-    result = _engine_cli(command, home, ["studio", "project", "create", "explainer", slug, "--home", str(home), "1920x1080", "60", f"{duration:.6f}"])
+    result = _engine_cli(
+        command, home,
+        ["studio", "project", "create", "explainer", slug, "--home", str(home), f"{width}x{height}", str(fps), f"{duration:.6f}"],
+    )
     try:
         return json.loads(result)
     except json.JSONDecodeError as exc:
@@ -385,6 +396,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
 
     engine_command, _ = resolve_aivee()
     width, height = (1080, 1920) if portrait else (int(project.get("width", 1920)), int(project.get("height", 1080)))
+    portrait = portrait or height > width
     fps = int(project.get("fps", 60))
     if preview:
         width, height = round(width / 2), round(height / 2)
