@@ -9,6 +9,7 @@ Explainer Studio is an agent plugin for creating narrated explainer videos from 
 - Chat guided first run for brand, language, narration preference, and avatar.
 - Use your own narration or connected ElevenLabs, Higgsfield, or Suno capabilities.
 - Create and review word timed storyboards before rendering.
+- Use custom per-scene HTML and GSAP compositions in Studio renders.
 - Use the bundled Emo robot presenter or prepare a custom sprite pack.
 - Start with the bundled presenter, a clean motion-graphics style, and phrase captions in a speech bubble beside the avatar.
 - Compose scenes, avatar states, and narration in an editable AIVEE timeline.
@@ -74,11 +75,13 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 1. Choose a topic, audience, length, and language; review the script in chat.
 2. Attach or generate narration, then transcribe it or import reviewed word timings.
-3. Review the storyboard and approve it in chat.
+3. Review the storyboard in chat. For a custom scene, author `compositions/scenes/<name>/index.html` in the AIVEE project and attach it with `scene-composition <project> <scene-number> compositions/scenes/<name>/index.html --json`; review and approve the updated storyboard.
 4. Render a preview through AIVEE, request revisions, then render and inspect the final video. AIVEE owns all composition and rendering.
 5. Share the MP4 and AIVEE-owned project folder; the editable timeline, registered media, renders, and Studio workflow files are kept together in the project. Studio workflow files live under `studio-data/explainer/`.
 
 `status <project>` reports whether voice, words, storyboard, approved, preview, and final are done, the path of each existing file, and the next safe command. Preview and final paths are the default files in `renders/` (`draft-engine.mp4`, `draft-portrait-engine.mp4`, `final-engine.mp4`, and `final-portrait-engine.mp4`).
+
+`scene-composition <project> <scene-number> <html-path>` attaches a project-owned AIVEE HTML/GSAP composition to a storyboard scene. Keep the composition and its local assets in `compositions/scenes/<name>/`; it replaces that scene's `visual_cues` and renders on its narration timing under Studio's avatar and captions. The command records a hash of the scene folder and clears storyboard approval. Reattach and review the storyboard after changing any file in that folder.
 
 Run `python scripts/explainer.py --help` for CLI commands. Projects preserve source media and never overwrite existing render outputs. Previous renders remain available for comparison; new takes use a separate project.
 

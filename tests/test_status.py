@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from explainer_studio.cli import _step_crosses_review_gate, command_step, default_render_name, main
 from explainer_studio.common import file_hash
 from explainer_studio.status import FINAL_RENDERS, PREVIEW_RENDERS
-from explainer_studio.timing import storyboard_hash
+from explainer_studio.timing import scene_composition_hash, storyboard_hash
 
 
 KEYS = {"ok", "command", "data", "next_steps", "error"}
@@ -218,6 +218,30 @@ class StatusTest(unittest.TestCase):
         self.render("draft-engine.mp4")
         _, payload = self.status()
         self.assertTrue(payload["data"]["stages"]["preview"]["done"])
+        self.assertFalse(payload["data"]["stages"]["approved"]["done"])
+        self.assertEqual(payload["data"]["review_gate"], "storyboard")
+        self.assertEqual(payload["next_steps"], [])
+
+    def test_changed_scene_composition_reopens_storyboard_review(self):
+        self.write_project()
+        self.write_voice()
+        board = self.write_board()
+        composition = self.root / "compositions" / "scenes" / "scene-01"
+        composition.mkdir(parents=True)
+        html = composition / "index.html"
+        html.write_text("<div>first</div>", encoding="utf-8")
+        (composition / "visual.svg").write_text("<svg/>", encoding="utf-8")
+        board["scenes"][0]["composition"] = "compositions/scenes/scene-01/index.html"
+        board["scenes"][0]["composition_sha256"] = scene_composition_hash(html)
+        board["approved"] = True
+        board["approval_hash"] = storyboard_hash(board)
+        (self.data / "storyboard.json").write_text(json.dumps(board), encoding="utf-8")
+        _, payload = self.status()
+        self.assertTrue(payload["data"]["stages"]["approved"]["done"])
+
+        (composition / "visual.svg").write_text("<svg><circle/></svg>", encoding="utf-8")
+        _, payload = self.status()
+        self.assertTrue(payload["data"]["stages"]["storyboard"]["done"])
         self.assertFalse(payload["data"]["stages"]["approved"]["done"])
         self.assertEqual(payload["data"]["review_gate"], "storyboard")
         self.assertEqual(payload["next_steps"], [])
