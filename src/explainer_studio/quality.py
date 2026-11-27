@@ -142,10 +142,17 @@ _VERTICAL_SOCIAL = 9 / 16
 
 
 def safe_zone_preset(width: int, height: int) -> str:
-    """Use the tall-frame preset only when the frame is near 9:16."""
+    """Pick the safe-zone preset that matches this frame.
+
+    A frame near 9:16 uses vertical-social. Other tall frames use title-safe.
+    Wide frames use full: the landscape avatar and caption are placed inside
+    the outer five percent, so a tighter preset would fail the designed layout.
+    """
     if width > 0 and height > 0 and abs((width / height) - _VERTICAL_SOCIAL) / _VERTICAL_SOCIAL <= 0.02:
         return "vertical-social"
-    return "title-safe"
+    if height > width:
+        return "title-safe"
+    return "full"
 
 
 def region_qa_plan(

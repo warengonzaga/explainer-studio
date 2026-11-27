@@ -175,8 +175,24 @@ class QualityChecksTest(unittest.TestCase):
     def test_safe_zone_preset_uses_vertical_social_for_nine_by_sixteen(self):
         self.assertEqual(safe_zone_preset(1080, 1920), "vertical-social")
         self.assertEqual(safe_zone_preset(540, 960), "vertical-social")
-        self.assertEqual(safe_zone_preset(1920, 1080), "title-safe")
+        self.assertEqual(safe_zone_preset(1920, 1080), "full")
         self.assertEqual(safe_zone_preset(1080, 1350), "title-safe")
+
+    def test_default_regions_fit_the_selected_preset(self):
+        margins = {
+            "vertical-social": (0.06, 0.14, 0.06, 0.20),
+            "title-safe": (0.10, 0.10, 0.10, 0.10),
+            "full": (0.0, 0.0, 0.0, 0.0),
+        }
+        board = {"scenes": [{"start": 0, "end": 1, "headline": "Open"}]}
+        for width, height in ((1080, 1920), (1080, 1350), (1920, 1080)):
+            plan = region_qa_plan({"fps": 30}, board, width, height)
+            left, top, right, bottom = margins[plan["preset"]]
+            for box in plan["flicker"]["regions"]:
+                self.assertGreaterEqual(box["x"], left - 1e-6)
+                self.assertGreaterEqual(box["y"], top - 1e-6)
+                self.assertLessEqual(box["x"] + box["width"], 1 - right + 1e-6)
+                self.assertLessEqual(box["y"] + box["height"], 1 - bottom + 1e-6)
 
     def test_region_plan_uses_avatar_and_caption_layout(self):
         project = {"width": 1080, "height": 1920, "fps": 30, "caption": {"placement": {"x": 0.4, "width": 0.4}}}
@@ -219,8 +235,8 @@ class QualityChecksTest(unittest.TestCase):
             ), patch.dict(os.environ, {"EXPLAINER_STUDIO_HOME": temporary}):
                 report = region_qa(root, project, board, root / "final.mp4", 1920, 1080, fps=30)
         self.assertFalse(report["pass"])
-        self.assertEqual(report["preset"], "title-safe")
-        self.assertEqual(seen["safe"], {"preset": "title-safe"})
+        self.assertEqual(report["preset"], "full")
+        self.assertEqual(seen["safe"], {"preset": "full"})
         self.assertEqual(seen["flicker"]["regions"][0]["id"], "avatar")
         self.assertEqual(seen["boxes"]["width"], 1920)
         self.assertEqual(seen["boxes"]["boxes"][1]["id"], "caption")
