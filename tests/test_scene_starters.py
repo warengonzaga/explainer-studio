@@ -99,6 +99,19 @@ class SceneStarterLibraryTest(unittest.TestCase):
         with self.assertRaisesRegex(ProjectError, "overlaps the avatar or captions"):
             scene_stage(1080, 1920, visual)
 
+    def test_caption_box_follows_profile_project_and_scene(self):
+        profile = {"caption": {"placement": {"x": 0.5, "y": 0.1, "width": 0.4, "height": 0.1}}}
+        project = {"caption": {"placement": {"y": 0.2}}}
+        scene = {"caption": {"y": 0.62, "height": 0.1, "fontSize": 32}}
+        box = caption_region(project, 1920, 1080, profile=profile, scene=scene)
+        self.assertEqual(box, {"x": 0.5, "y": 0.62, "width": 0.4, "height": 0.1})
+        stage = scene_stage(1920, 1080, box)
+        self.assertFalse(_overlaps(stage, box))
+        self.assertFalse(_overlaps(stage, avatar_region(1920, 1080)))
+        covered = caption_region({"width": 1080, "height": 1920}, 1080, 1920, profile={"caption": {"placement": portrait_regions()["visual"]}})
+        with self.assertRaisesRegex(ProjectError, "overlaps the avatar or captions"):
+            scene_stage(1080, 1920, covered)
+
 
 class SceneStarterCommandTest(unittest.TestCase):
     def setUp(self):
@@ -272,6 +285,41 @@ class SceneStarterCommandTest(unittest.TestCase):
         self.assertIn('data-duration="2"', scene)
         self.assertIn('data-width="1920"', scene)
         self.assertNotIn("{{", scene)
+
+    def _stage_token(self, scene: str, name: str, value: float) -> None:
+        token = f"--stage-{name}: {value * 100:.4f}".rstrip("0").rstrip(".")
+        self.assertIn(token, scene[: scene.index("</main>")])
+
+    def test_add_template_clears_profile_and_scene_captions(self):
+        root, data = self.write_project()
+        self.write_storyboard(root, data)
+        profile = {"caption": {"placement": {"x": 0.4, "y": 0.08, "width": 0.5, "height": 0.12}}}
+        (self.home / "profile.json").write_text(json.dumps(profile), encoding="utf-8")
+        project = json.loads((data / "project.json").read_text(encoding="utf-8"))
+        board = json.loads((data / "storyboard.json").read_text(encoding="utf-8"))
+        board["scenes"][0]["caption"] = {"x": 0.42, "y": 0.72, "width": 0.5, "height": 0.12}
+        (data / "storyboard.json").write_text(json.dumps(board), encoding="utf-8")
+        with patch("explainer_studio.timing.probe_duration", return_value=1):
+            code, out, err = self.invoke("add-template", "--json", str(root), "hook-title", "--scene", "1")
+        self.assertEqual(code, 0, err or out)
+        scene = (root / "compositions/scenes/hook-title/index.html").read_text(encoding="utf-8")
+        caption = caption_region(project, 1920, 1080, profile=profile, scene=board["scenes"][0])
+        stage = scene_stage(1920, 1080, caption)
+        profile_only = scene_stage(1920, 1080, caption_region(project, 1920, 1080, profile=profile))
+        self.assertNotEqual(stage["y"], profile_only["y"])
+        self._stage_token(scene, "y", stage["y"])
+        self.assertFalse(_overlaps(stage, caption))
+        self.assertFalse(_overlaps(stage, avatar_region(1920, 1080)))
+
+    def test_add_template_refuses_a_profile_caption_covering_the_portrait_stage(self):
+        root, _ = self.write_project(width=1080, height=1920)
+        (self.home / "profile.json").write_text(json.dumps({
+            "caption": {"placement": portrait_regions()["visual"]},
+        }), encoding="utf-8")
+        code, out, err = self.invoke("add-template", "--json", str(root), "badge-callout", "--duration", "2")
+        self.assertEqual(code, 1)
+        self.assertIn("overlaps the avatar or captions", json.loads(out)["error"])
+        self.assertFalse((root / "compositions").exists())
 
     def test_direct_add_refuses_a_symlink_scene_path(self):
         root, _ = self.write_project()

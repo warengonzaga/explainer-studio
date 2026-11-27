@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from .avatar import avatar_box
-from .common import ProjectError, project_file, read_json, studio_file
+from .common import ProjectError, project_file, read_json, studio_file, studio_home
 from .engine import _check_reels_box, portrait_regions
 
 
@@ -42,22 +42,25 @@ def list_templates() -> list[dict]:
     return [{key: item[key] for key in ("id", "title", "summary", "texts")} for item in _load_templates()]
 
 
-def caption_region(project: dict, width: int, height: int) -> dict[str, float]:
-    """Normalized caption box from the project, or the format default."""
-    caption = project.get("caption") or {}
-    if not isinstance(caption, dict):
-        raise ProjectError("project caption settings must be an object")
-    placement = caption.get("placement") or {}
-    if not isinstance(placement, dict):
-        raise ProjectError("caption placement must be an object")
+def caption_region(project: dict, width: int, height: int, *, profile: dict | None = None, scene: dict | None = None) -> dict[str, float]:
+    """Normalized caption box used for rendering.
+
+    Starts from the format default, then applies profile placement, project
+    placement, and the scene caption position. That is the same order the
+    renderer uses.
+    """
     box = dict(portrait_regions()["bubble"] if height > width else {"x": 0.31, "y": 0.46, "width": 0.65, "height": 0.12})
-    for key in ("x", "y", "width", "height"):
-        if key not in placement:
+    placement: dict[str, float] = {}
+    for source, label in ((profile, "profile"), (project, "project")):
+        if not isinstance(source, dict):
             continue
-        value = placement[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-            raise ProjectError("caption placement values must be finite numbers from 0 to 1")
-        box[key] = float(value)
+        placement.update(_placement(source.get("caption"), label, nested=True))
+    if scene is not None:
+        if not isinstance(scene, dict):
+            raise ProjectError("scene must be an object")
+        placement.update(_placement(scene.get("caption"), "scene", nested=False))
+    for key, value in placement.items():
+        box[key] = value
     if box["width"] <= 0 or box["height"] <= 0 or box["x"] < 0 or box["y"] < 0 or box["x"] + box["width"] > 1 or box["y"] + box["height"] > 1:
         raise ProjectError("caption placement must stay inside the frame")
     return box
@@ -93,7 +96,8 @@ def scene_stage(width: int, height: int, caption: dict[str, float]) -> dict[str,
     return max(candidates, key=lambda stage: stage["height"])
 
 
-def scene_duration(root: Path, scene_number: int) -> float:
+def storyboard_scene(root: Path, scene_number: int) -> tuple[float, dict]:
+    """Duration and object for one storyboard scene."""
     path = studio_file(root, "storyboard.json")
     if not path.is_file():
         raise ProjectError("generate a storyboard before attaching a scene starter")
@@ -111,7 +115,7 @@ def scene_duration(root: Path, scene_number: int) -> float:
         raise ProjectError(f"scene {scene_number} needs numeric start and end") from exc
     if not math.isfinite(duration) or duration <= 0:
         raise ProjectError("scene duration must be a positive finite number")
-    return duration
+    return duration, scene
 
 
 def parse_text_assignments(items: list[str] | None) -> dict[str, str]:
@@ -129,7 +133,7 @@ def parse_text_assignments(items: list[str] | None) -> dict[str, str]:
     return texts
 
 
-def add_scene_starter(root: Path, template_id: str, *, name: str | None, duration: float, texts: dict[str, str] | None = None) -> dict:
+def add_scene_starter(root: Path, template_id: str, *, name: str | None, duration: float, texts: dict[str, str] | None = None, scene: dict | None = None) -> dict:
     """Copy one starter into the project. Refuse to replace an existing scene file."""
     spec = _require(template_id)
     scene_name = name or template_id
@@ -139,7 +143,7 @@ def add_scene_starter(root: Path, template_id: str, *, name: str | None, duratio
     project = _project(root)
     width, height = _canvas(project)
     colors = _colors(project)
-    stage = scene_stage(width, height, caption_region(project, width, height))
+    stage = scene_stage(width, height, caption_region(project, width, height, profile=_saved_profile(), scene=scene))
     values = {
         "COMPOSITION_ID": "root",
         "SCENE_DURATION": duration_text,
@@ -272,6 +276,38 @@ def _canvas(project: dict) -> tuple[int, int]:
     if type(width) is not int or type(height) is not int or width < 1 or height < 1:
         raise ProjectError("project width and height must be positive integers")
     return width, height
+
+
+def _placement(caption, label: str, *, nested: bool) -> dict[str, float]:
+    """Placement keys from a profile or project caption, or a scene caption position."""
+    if not caption:
+        return {}
+    if not isinstance(caption, dict):
+        raise ProjectError(f"{label} caption settings must be an object")
+    raw = caption.get("placement") if nested else caption
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ProjectError(f"{label} caption placement must be an object")
+    placement = {}
+    for key in ("x", "y", "width", "height"):
+        if key not in raw:
+            continue
+        value = raw[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ProjectError("caption placement values must be finite numbers from 0 to 1")
+        placement[key] = float(value)
+    return placement
+
+
+def _saved_profile() -> dict | None:
+    path = studio_home() / "profile.json"
+    if not path.is_file():
+        return None
+    profile = read_json(path)
+    if not isinstance(profile, dict):
+        raise ProjectError("profile settings must be an object")
+    return profile
 
 
 def _colors(project: dict) -> dict[str, str]:

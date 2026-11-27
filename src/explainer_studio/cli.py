@@ -832,7 +832,7 @@ def templates_command(args) -> None:
 
 
 def add_template_command(args) -> None:
-    from .templates import add_scene_starter, discard_scene_starter, parse_text_assignments, scene_duration
+    from .templates import add_scene_starter, discard_scene_starter, parse_text_assignments, storyboard_scene
 
     root = Path(args.project).expanduser().resolve()
     texts = parse_text_assignments(args.set)
@@ -840,8 +840,11 @@ def add_template_command(args) -> None:
         raise ProjectError("pass --scene to use the storyboard duration, or --duration for an unattached starter")
     if args.scene is not None and args.duration is not None:
         raise ProjectError("scene duration comes from the storyboard; omit --duration")
-    duration = scene_duration(root, args.scene) if args.scene is not None else args.duration
-    result = add_scene_starter(root, args.template, name=args.name, duration=duration, texts=texts)
+    scene = None
+    duration = args.duration
+    if args.scene is not None:
+        duration, scene = storyboard_scene(root, args.scene)
+    result = add_scene_starter(root, args.template, name=args.name, duration=duration, texts=texts, scene=scene)
     if args.scene is None:
         emit(args, result, [], f"scene starter written: {result['path']}")
         return
