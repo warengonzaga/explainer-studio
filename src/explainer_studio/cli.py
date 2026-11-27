@@ -441,11 +441,13 @@ def doctor(args) -> None:
         version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
         checks["aivee"] = version
         lines.append(f"aivee: {version} ({package_root})")
-        gap = aivee_version_gap(version, feature="caption keyword emphasis and unbroken hyphenated words")
+        gap = aivee_version_gap(
+            version, feature="caption keyword emphasis, unbroken hyphenated words, and region QA",
+        )
         if gap:
             lines.append(f"aivee features: {gap}")
             missing.append(
-                "AIVEE 0.3.0+ for caption keyword emphasis and unbroken hyphenated words "
+                "AIVEE 0.3.0+ for caption keyword emphasis, unbroken hyphenated words, and region QA "
                 f"(installed {version}; run `npm install --global aivee@latest`)"
             )
     except ProjectError as exc:
@@ -945,7 +947,7 @@ def approve(args) -> None:
 def check(args) -> None:
     import json
     from .timing import validate_storyboard
-    from .quality import flicker_check, safe_zone_check, sync_check
+    from .quality import flicker_check, region_qa, safe_zone_check, sync_check
 
     root = Path(args.project).resolve()
     data = studio_data(root)
@@ -985,20 +987,30 @@ def check(args) -> None:
         raise ResultError(f"video duration {actual:.3f}s differs from voice {duration:.3f}s", summary)
     flicker = flicker_check(output)
     safe_zones = safe_zone_check(root, project, board)
+    regions = region_qa(root, project, board, output, size[0], size[1], fps=video.get("avg_frame_rate"))
+    report = {**summary, "flicker": flicker, "safe_zones": safe_zones, "region_qa": regions}
     sync = {"checked": False, "reason": "install faster-whisper or supply rendered word timings to sync-check"}
     if _sync_check_available():
         sync = {**sync_check(root, output, getattr(args, "model", "small"), getattr(args, "language", None)), "checked": True}
+        report["sync"] = sync
         if not sync["pass"]:
-            raise ResultError("rendered speech timing does not match the source voiceover", {**summary, "sync": sync, "flicker": flicker, "safe_zones": safe_zones})
+            raise ResultError("rendered speech timing does not match the source voiceover", report)
+    else:
+        report["sync"] = sync
     if not flicker["pass"]:
-        raise ResultError("single-frame flicker detected in the render", {**summary, "flicker": flicker, "safe_zones": safe_zones, "sync": sync})
+        raise ResultError("single-frame flicker detected in the render", report)
     if not safe_zones["pass"]:
-        raise ResultError("native composition content crosses the portrait safe zones", {**summary, "flicker": flicker, "safe_zones": safe_zones, "sync": sync})
-    message = f"PASS: H.264/AAC {size[0]}x{size[1]}, {actual:.3f}s voice/video, {len(board['scenes'])} scenes; {flicker['frames_scanned']} frames checked"
+        raise ResultError("native composition content crosses the portrait safe zones", report)
+    if not regions["pass"]:
+        raise ResultError("avatar or caption regions failed flicker or safe-zone checks", report)
+    message = (
+        f"PASS: H.264/AAC {size[0]}x{size[1]}, {actual:.3f}s voice/video, {len(board['scenes'])} scenes; "
+        f"{flicker['frames_scanned']} frames checked; region QA {regions['preset']} passed"
+    )
     steps = [command_step("contact-sheet", str(root), str(output))]
     emit(
         args,
-        {**summary, "flicker": flicker, "safe_zones": safe_zones, "sync": sync},
+        report,
         steps,
         message,
     )
@@ -1235,7 +1247,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
     p.set_defaults(handler=render_engine_command)
-    p = add_command(sub, json_flags, "check", help="run media, sync, flicker, and portrait safe-zone checks")
+    p = add_command(sub, json_flags, "check", help="run media, sync, flicker, safe-zone, and region QA checks")
     p.add_argument("project")
     p.add_argument("video")
     p.add_argument("--model", default="small")

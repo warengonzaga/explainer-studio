@@ -6,6 +6,7 @@ import io
 import json
 import math
 import os
+import re
 import statistics
 import subprocess
 import tempfile
@@ -135,6 +136,148 @@ def safe_zone_check(root: Path, project: dict, board: dict) -> dict:
         return json.loads(result.stdout)
     except ValueError as exc:
         raise ProjectError("native composition safe-zone check returned invalid JSON") from exc
+
+
+_VERTICAL_SOCIAL = 9 / 16
+
+
+def safe_zone_preset(width: int, height: int) -> str:
+    """Use the tall-frame preset only when the frame is near 9:16."""
+    if width > 0 and height > 0 and abs((width / height) - _VERTICAL_SOCIAL) / _VERTICAL_SOCIAL <= 0.02:
+        return "vertical-social"
+    return "title-safe"
+
+
+def region_qa_plan(
+    project: dict, board: dict, width: int, height: int, profile: dict | None = None, fps: float | str | None = None,
+) -> dict:
+    """Flicker regions and safe-zone boxes from the avatar and caption layout."""
+    from .templates import avatar_region, caption_region
+
+    if type(width) is not int or type(height) is not int or width < 1 or height < 1:
+        raise ProjectError("region QA needs positive integer frame dimensions")
+    scenes = board.get("scenes") if isinstance(board, dict) else None
+    if not isinstance(scenes, list):
+        raise ProjectError("storyboard scenes must be an array")
+    avatar = _fraction_box(avatar_region(width, height))
+    flicker_regions = [{"id": "avatar", **avatar}]
+    boxes = [{"id": "avatar", **avatar}]
+    unique: list[dict[str, float]] = []
+    seen: set[tuple[float, float, float, float]] = set()
+    timed = []
+    for index, scene in enumerate(scenes, start=1):
+        if not isinstance(scene, dict):
+            raise ProjectError(f"scene {index} must be an object")
+        box = _fraction_box(caption_region(project, width, height, profile=profile, scene=scene))
+        key = (box["x"], box["y"], box["width"], box["height"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(box)
+        try:
+            start, end = float(scene["start"]), float(scene["end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProjectError(f"scene {index} needs numeric start and end") from exc
+        duration = end - start
+        if not math.isfinite(start) or not math.isfinite(duration) or start < 0 or duration <= 0:
+            raise ProjectError(f"scene {index} needs a positive duration")
+        timed.append((index, box, start, duration))
+    if len(unique) == 1:
+        flicker_regions.append({"id": "caption", **unique[0]})
+    else:
+        flicker_regions.extend({"id": f"caption-{index}", **box} for index, box in enumerate(unique, start=1))
+    for index, box, start, duration in timed:
+        boxes.append({
+            "id": "caption" if len(timed) == 1 else f"caption-{index}",
+            **box,
+            "timeSeconds": start,
+            "durationSeconds": duration,
+        })
+    return {
+        "preset": safe_zone_preset(width, height),
+        "flicker": {"regions": flicker_regions},
+        "boxes": {
+            "schemaVersion": 1,
+            "width": width,
+            "height": height,
+            "fps": _qa_frame_rate(fps, project.get("fps", 30)),
+            "boxes": boxes,
+        },
+    }
+
+
+def region_qa(
+    root: Path, project: dict, board: dict, video: Path, width: int, height: int, fps: float | str | None = None,
+) -> dict:
+    """Run AIVEE flicker and safe-zone checks on the avatar and caption regions."""
+    from .engine import require_aivee_version, resolve_aivee
+    from .templates import _saved_profile
+
+    command, package_root = resolve_aivee()
+    require_aivee_version(package_root, "region flicker and safe-zone checks")
+    plan = region_qa_plan(project, board, width, height, _saved_profile(), fps)
+    with tempfile.TemporaryDirectory(prefix="explainer-region-qa-") as temporary:
+        temporary = Path(temporary)
+        flicker_options = temporary / "flicker.json"
+        boxes_path = temporary / "boxes.json"
+        safe_options = temporary / "safe-zone.json"
+        write_json(flicker_options, plan["flicker"])
+        write_json(boxes_path, plan["boxes"])
+        write_json(safe_options, {"preset": plan["preset"]})
+        flicker = _aivee_qa(command, ["qa", "flicker", str(video), str(flicker_options)], root)
+        safe_zone = _aivee_qa(command, ["qa", "safe-zone", str(boxes_path), str(safe_options)], root)
+    return {
+        "pass": flicker.get("passed") is True and safe_zone.get("passed") is True,
+        "preset": plan["preset"],
+        "regions": plan["flicker"]["regions"],
+        "flicker": flicker,
+        "safe_zone": safe_zone,
+    }
+
+
+def _fraction_box(box: dict) -> dict[str, float]:
+    return {key: round(float(box[key]), 6) for key in ("x", "y", "width", "height")}
+
+
+def _qa_frame_rate(value: float | str | None, fallback) -> float | str:
+    if isinstance(value, str) and re.fullmatch(r"\d+/\d+", value.strip()):
+        return value.strip()
+    parsed = _parse_frame_rate(value)
+    if parsed is not None:
+        return parsed
+    parsed = _parse_frame_rate(fallback)
+    if parsed is None:
+        raise ProjectError("region QA needs a positive frame rate")
+    return parsed
+
+
+def _parse_frame_rate(value) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)) and math.isfinite(value) and value > 0:
+        return float(value)
+    if isinstance(value, str) and "/" in value:
+        numerator, denominator = value.split("/", 1)
+        try:
+            rate = float(numerator) / float(denominator)
+        except (ValueError, ZeroDivisionError):
+            return None
+        if math.isfinite(rate) and rate > 0:
+            return rate
+    return None
+
+
+def _aivee_qa(command: list[str], args: list[str], cwd: Path) -> dict:
+    result = subprocess.run([*command, *args], cwd=cwd, capture_output=True, text=True)
+    detail = (result.stderr or result.stdout).strip()
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ProjectError(detail or "AIVEE region QA returned invalid JSON") from exc
+    if not isinstance(report, dict) or not isinstance(report.get("passed"), bool):
+        raise ProjectError(detail or "AIVEE region QA returned an unexpected report")
+    if result.returncode not in (0, 1) or (result.returncode == 0) != report["passed"]:
+        raise ProjectError(detail or f"AIVEE region QA exited {result.returncode}")
+    return report
 
 
 def contact_sheet(root: Path, video: Path, output: Path) -> Path:
