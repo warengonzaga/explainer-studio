@@ -10,6 +10,7 @@ import statistics
 import subprocess
 import tempfile
 from difflib import SequenceMatcher
+from importlib.resources import as_file, files
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -111,19 +112,23 @@ def safe_zone_check(root: Path, project: dict, board: dict) -> dict:
 
     engine_command, package_root = resolve_aivee()
     node = engine_command[0]
-    runner = Path(__file__).resolve().parents[2] / "scripts" / "safe_check.mjs"
+    runner = files("explainer_studio").joinpath("scripts", "safe_check.mjs")
     manifest = {"compositions": compositions, "width": width, "height": height}
     with tempfile.TemporaryDirectory(prefix="explainer-safe-check-") as temporary:
         manifest_path = Path(temporary) / "compositions.json"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         environment = {**os.environ, **_browser_env(Path(temporary))}
-        try:
-            result = subprocess.run(
-                [node, str(runner), str(manifest_path), package_root], capture_output=True, text=True,
-                env=environment, timeout=180,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise ProjectError("native composition safe-zone check timed out after 180 seconds") from exc
+        with as_file(runner) as runner_path:
+            script = Path(runner_path)
+            if not script.is_file():
+                raise ProjectError("safe-zone checker is missing from the Explainer Studio package")
+            try:
+                result = subprocess.run(
+                    [node, str(script), str(manifest_path), package_root], capture_output=True, text=True,
+                    env=environment, timeout=180,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise ProjectError("native composition safe-zone check timed out after 180 seconds") from exc
     if result.returncode:
         raise ProjectError((result.stderr or result.stdout).strip() or "native composition safe-zone check failed")
     try:

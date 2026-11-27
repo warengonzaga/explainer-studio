@@ -19,3 +19,6 @@ explainer = "explainer_studio.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+explainer_studio = ["scripts/safe_check.mjs"]

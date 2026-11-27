@@ -3,9 +3,12 @@
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
+from importlib.resources import as_file, files
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -143,7 +146,8 @@ class QualityChecksTest(unittest.TestCase):
             completed = SimpleNamespace(returncode=0, stdout=json.dumps(expected), stderr="")
             seen = {}
             def run_sampler(args, **kwargs):
-                seen.update(json.loads(Path(args[2]).read_text(encoding="utf-8")))
+                seen["manifest"] = json.loads(Path(args[2]).read_text(encoding="utf-8"))
+                seen["runner"] = Path(args[1])
                 return completed
             with patch("explainer_studio.engine.resolve_aivee", return_value=(["node", "aivee.mjs"], temporary)), patch(
                 "explainer_studio.engine._browser_env", return_value={"HYPERFRAMES_BROWSER_PATH": "chrome.exe"},
@@ -152,9 +156,34 @@ class QualityChecksTest(unittest.TestCase):
                     {"start": 0, "end": 1, "composition": "compositions/scenes/one/index.html"},
                 ]})
             self.assertEqual(report, expected)
-            self.assertEqual(seen["width"], 1080)
-            self.assertEqual(seen["compositions"][0]["scene"], 1)
-            self.assertEqual(seen["compositions"][0]["duration"], 1)
+            manifest = seen["manifest"]
+            self.assertEqual(manifest["width"], 1080)
+            self.assertEqual(manifest["compositions"][0]["scene"], 1)
+            self.assertEqual(manifest["compositions"][0]["duration"], 1)
+            self.assertTrue(seen["runner"].is_file())
+            self.assertEqual(seen["runner"].name, "safe_check.mjs")
+
+    def test_safe_check_runner_resolves_from_the_package(self):
+        with as_file(files("explainer_studio").joinpath("scripts", "safe_check.mjs")) as path:
+            script = Path(path)
+            self.assertTrue(script.is_file())
+            self.assertEqual(script.name, "safe_check.mjs")
+            self.assertIn("puppeteer-core", script.read_text(encoding="utf-8"))
+
+    def test_built_wheel_includes_safe_check_runner(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            completed = subprocess.run(
+                [sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "-w", temporary, str(ROOT)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            wheels = list(Path(temporary).glob("*.whl"))
+            self.assertEqual(len(wheels), 1)
+            with zipfile.ZipFile(wheels[0]) as archive:
+                names = [name for name in archive.namelist() if name.endswith("safe_check.mjs")]
+                self.assertEqual(names, ["explainer_studio/scripts/safe_check.mjs"])
+                script = archive.read(names[0]).decode("utf-8")
+        self.assertIn("puppeteer-core", script)
 
 
 if __name__ == "__main__":
