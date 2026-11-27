@@ -1,0 +1,9 @@
+{
+  "title": "Hook or title card",
+  "summary": "Reveal a short hook, a title, and one supporting line.",
+  "texts": {
+    "kicker": "Hook",
+    "title": "Title",
+    "support": "Supporting line"
+  }
+}

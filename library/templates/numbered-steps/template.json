@@ -1,0 +1,9 @@
+{
+  "title": "Numbered steps",
+  "summary": "Reveal three numbered steps in order.",
+  "texts": {
+    "step-1": "First step",
+    "step-2": "Second step",
+    "step-3": "Third step"
+  }
+}

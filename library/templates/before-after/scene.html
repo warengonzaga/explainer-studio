@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="{{DOCUMENT_LANGUAGE}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width={{PROJECT_WIDTH}},height={{PROJECT_HEIGHT}}">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    #root { position: relative; width: 100%; height: 100%; overflow: hidden; color: var(--ink); font-family: sans-serif; }
+    .stage {
+      position: absolute; left: var(--stage-x); top: var(--stage-y); width: var(--stage-w); height: var(--stage-h);
+      container-type: size; display: flex; padding: 2cqh 2cqw;
+    }
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 4cqw; width: 100%; height: 100%; }
+    .panel {
+      display: flex; flex-direction: column; justify-content: center; gap: 2cqh; min-width: 0;
+      padding: 4cqh 4cqw; border: 0.45cqmin solid var(--ink); border-radius: 3cqmin; background: var(--paper);
+    }
+    .after { border-color: var(--accent); }
+    .label { margin: 0; font-size: 7cqmin; font-weight: 800; overflow-wrap: anywhere; }
+    .after .label { color: var(--accent); }
+    .body { margin: 0; font-size: 12cqmin; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main id="root" data-composition-id="root" data-start="0" data-duration="{{SCENE_DURATION}}" data-width="{{PROJECT_WIDTH}}" data-height="{{PROJECT_HEIGHT}}" style="--stage-x: {{STAGE_X}}%; --stage-y: {{STAGE_Y}}%; --stage-w: {{STAGE_W}}%; --stage-h: {{STAGE_H}}%; --ink: {{COLOR_INK}}; --paper: {{COLOR_BACKGROUND}}; --accent: {{COLOR_ACCENT}};">
+    <div class="stage">
+      <div class="compare">
+        <section class="panel before">
+          <p class="label">{{TEXT_BEFORE_LABEL}}</p>
+          <p class="body">{{TEXT_BEFORE}}</p>
+        </section>
+        <section class="panel after">
+          <p class="label">{{TEXT_AFTER_LABEL}}</p>
+          <p class="body">{{TEXT_AFTER}}</p>
+        </section>
+      </div>
+    </div>
+  </main>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const root = document.getElementById("root");
+    const duration = Number(root.dataset.duration);
+    const at = (fraction) => duration * fraction;
+    const timeline = gsap.timeline({ paused: true });
+    const reveal = (selector, fraction) => {
+      timeline.fromTo(selector, { autoAlpha: 0, scale: 0.96 }, { autoAlpha: 1, scale: 1, duration: at(0.16), ease: "power2.out", transformOrigin: "50% 50%" }, at(fraction));
+    };
+    reveal(".before", 0.1);
+    reveal(".after", 0.42);
+    timeline.to({}, { duration }, 0);
+    window.__timelines.root = timeline;
+  </script>
+</body>
+</html>

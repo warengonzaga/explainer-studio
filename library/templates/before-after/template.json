@@ -1,0 +1,10 @@
+{
+  "title": "Before and after",
+  "summary": "Show an earlier state beside a later state.",
+  "texts": {
+    "before-label": "Before",
+    "before": "Earlier state",
+    "after-label": "After",
+    "after": "Later state"
+  }
+}
