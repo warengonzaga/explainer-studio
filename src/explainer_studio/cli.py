@@ -426,9 +426,9 @@ def doctor(args) -> None:
         lines.append("faster-whisper: available")
     except ImportError:
         lines.append("faster-whisper: optional, needed for automatic word timing")
-    path = studio_home() / "profile.json"
-    lines.append(f"profile: {path if path.is_file() else 'not set up'}")
-    checks["profile"] = str(path) if path.is_file() else None
+    profile_path = studio_home() / "profile.json"
+    lines.append(f"profile: {profile_path if profile_path.is_file() else 'not set up'}")
+    checks["profile"] = str(profile_path) if profile_path.is_file() else None
     try:
         _, package_root = resolve_aivee()
         manifest_path = Path(package_root) / "package.json"
@@ -449,19 +449,30 @@ def doctor(args) -> None:
         missing.append("Chrome or Edge")
     from .audio import resolve_rhubarb
 
-    profile = read_json(path) if path.is_file() else {}
+    profile = read_json(profile_path) if profile_path.is_file() else {}
     configured = profile.get("rhubarb_path")
-    explicit = os.environ.get("RHUBARB_PATH") or (configured if isinstance(configured, str) else None)
-    if explicit:
-        path = Path(explicit).expanduser()
-        rhubarb = str(path.resolve()) if path.is_file() else shutil.which(explicit)
+    # Match phonetic_mouth_track: a profile path wins, then RHUBARB_PATH. Either one
+    # is used as given, so a missing file must not be reported as the amplitude fallback.
+    chosen = configured if isinstance(configured, str) and configured else None
+    if chosen is None:
+        chosen = os.environ.get("RHUBARB_PATH") or None
+    required_gaps = list(missing)
+    if chosen:
+        candidate = Path(chosen).expanduser()
+        resolved = str(candidate.resolve()) if candidate.is_file() else shutil.which(chosen)
+        rhubarb = str(Path(resolved).expanduser().resolve()) if resolved else None
+        if rhubarb:
+            rhubarb_label = rhubarb
+        else:
+            rhubarb_label = f"MISSING ({chosen})"
+            missing.append(f"Rhubarb ({chosen})")
     else:
         rhubarb = resolve_rhubarb()
-    rhubarb_label = rhubarb if rhubarb else "optional; amplitude lip sync will be used"
+        rhubarb_label = rhubarb if rhubarb else "optional; amplitude lip sync will be used"
     checks["rhubarb"] = rhubarb
     lines.append(f"rhubarb: {rhubarb_label}")
     checks["missing"] = missing
-    steps = _doctor_steps(missing, path.is_file(), install_aivee=install_aivee)
+    steps = _doctor_steps(required_gaps, profile_path.is_file(), install_aivee=install_aivee)
     if missing:
         if not args.json:
             for line in lines:
