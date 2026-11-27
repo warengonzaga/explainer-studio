@@ -10,12 +10,13 @@
     .stage {
       position: absolute; left: var(--stage-x); top: var(--stage-y); width: var(--stage-w); height: var(--stage-h);
       container-type: size; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4cqh; padding: 4cqh 5cqw;
+      overflow: hidden;
     }
     .badge {
-      display: block; width: fit-content; max-width: 100%; margin: 0; padding: 2cqh 4cqw; border-radius: 8cqmin;
-      background: var(--accent); color: var(--paper); font-size: 8cqmin; font-weight: 800; overflow-wrap: anywhere;
+      display: block; width: fit-content; max-width: 100%; margin: 0; padding: 2cqh 4cqw; border-radius: 8cqmin; flex: 0 1 auto; min-height: 0;
+      background: var(--accent); color: var(--paper); font-size: 8cqmin; font-weight: 800; overflow: hidden; overflow-wrap: anywhere;
     }
-    .message { margin: 0; max-width: 100%; font-size: 16cqmin; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+    .message { margin: 0; max-width: 100%; flex: 0 1 auto; min-height: 0; overflow: hidden; font-size: 16cqmin; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>

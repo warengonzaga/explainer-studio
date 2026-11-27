@@ -9,17 +9,17 @@
     #root { position: relative; width: 100%; height: 100%; overflow: hidden; color: var(--ink); font-family: sans-serif; }
     .stage {
       position: absolute; left: var(--stage-x); top: var(--stage-y); width: var(--stage-w); height: var(--stage-h);
-      container-type: size; display: flex; padding: 2cqh 2cqw;
+      container-type: size; display: flex; padding: 2cqh 2cqw; overflow: hidden;
     }
-    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 4cqw; width: 100%; height: 100%; }
+    .compare { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); gap: 4cqw; width: 100%; flex: 1 1 auto; min-height: 0; min-width: 0; overflow: hidden; }
     .panel {
-      display: flex; flex-direction: column; justify-content: center; gap: 2cqh; min-width: 0;
+      display: flex; flex-direction: column; justify-content: center; gap: 2cqh; min-width: 0; min-height: 0; overflow: hidden;
       padding: 4cqh 4cqw; border: 0.45cqmin solid var(--ink); border-radius: 3cqmin; background: var(--paper);
     }
     .after { border-color: var(--accent); }
-    .label { margin: 0; font-size: 7cqmin; font-weight: 800; overflow-wrap: anywhere; }
+    .label { margin: 0; min-height: 0; overflow: hidden; font-size: 7cqmin; font-weight: 800; overflow-wrap: anywhere; }
     .after .label { color: var(--accent); }
-    .body { margin: 0; font-size: 12cqmin; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+    .body { margin: 0; min-height: 0; overflow: hidden; font-size: 12cqmin; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>

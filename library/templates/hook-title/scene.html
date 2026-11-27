@@ -10,8 +10,9 @@
     .stage {
       position: absolute; left: var(--stage-x); top: var(--stage-y); width: var(--stage-w); height: var(--stage-h);
       container-type: size; display: flex; flex-direction: column; justify-content: center; gap: 4cqh; padding: 4cqh 5cqw;
+      overflow: hidden;
     }
-    .stage p { margin: 0; max-width: 100%; overflow-wrap: anywhere; }
+    .stage p { margin: 0; max-width: 100%; min-height: 0; overflow: hidden; overflow-wrap: anywhere; flex: 0 1 auto; }
     .kicker { color: var(--accent); font-size: 8cqmin; font-weight: 700; }
     .title { font-size: 22cqmin; font-weight: 800; line-height: 1.05; }
     .support { font-size: 11cqmin; font-weight: 700; line-height: 1.2; }

@@ -57,6 +57,8 @@ class SceneStarterLibraryTest(unittest.TestCase):
             scene = (directory / "scene.html").read_text(encoding="utf-8")
             self.assertIsNone(PIXELS.search(scene), starter)
             self.assertIsNone(HEX_COLOR.search(scene), starter)
+            self.assertIn(".stage {", scene)
+            self.assertIn("overflow: hidden", scene)
             self.assertIn("window.__timelines.root", scene)
             self.assertIn("gsap.timeline({ paused: true })", scene)
             self.assertIn("const at = (fraction) => duration * fraction", scene)
