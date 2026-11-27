@@ -13,50 +13,139 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from .common import ProjectError, command, run
+from .rhubarb import installed_rhubarb_path
 
 
+# A and F are closed-lip shapes (pressed M/B/P and puckered W/UW/OW). B and E stay slightly open.
 RHUBARB_MOUTH_MAP = {
     "A": "closed", "B": "small", "C": "open", "D": "wide",
-    "E": "small", "F": "small", "G": "open", "H": "open", "X": "rest",
+    "E": "small", "F": "closed", "G": "open", "H": "open", "X": "rest",
 }
-_MOUTHS = ("rest", "closed", "small", "open", "wide")
-# Enter a louder shape at the first value, and leave it only below the second.
-_MOUTH_GATES = ((.10, .07), (.22, .16), (.42, .34), (.72, .58))
-_MOUTH_HOLD = 2
+_SILENCE_RMS = 0.012
+_OPEN_RUN_CAP = 4
+_LOCAL_WINDOW_SECONDS = 0.45
+_PEAK_WINDOW_SECONDS = 0.09
+_NEAR_PEAK = 0.90
+_NUCLEUS_LEVEL = 0.70
+_WIDE_LEVEL = 1.15
+_VALLEY_RATIO = 0.84
+_DEEP_VALLEY_RATIO = 0.72
 
 
-def _mouth_rank(level: float, current: int) -> int:
-    rank = current
-    while rank < len(_MOUTH_GATES) and level >= _MOUTH_GATES[rank][0]:
-        rank += 1
-    while rank > 0 and level < _MOUTH_GATES[rank - 1][1]:
-        rank -= 1
-    return rank
+def _check_rate(rate: int) -> None:
+    if type(rate) is not int or not 1 <= rate <= 120:
+        raise ProjectError("Mouth cue rate must be an integer between 1 and 120")
 
 
-def mouth_states(levels: list[float]) -> list[str]:
-    """Map normalized amplitudes to mouth states, holding each shape for at least two samples."""
+def resolve_rhubarb(*candidates: str | None) -> str | None:
+    """Return the first usable Rhubarb executable, including the optional bootstrap install."""
+    for item in candidates:
+        if not item:
+            continue
+        path = Path(item).expanduser()
+        if path.is_file():
+            return str(path.resolve())
+        found = shutil.which(item)
+        if found:
+            return found
+    installed = installed_rhubarb_path()
+    if installed.is_file():
+        return str(installed.resolve())
+    return None
+
+
+def frame_levels(samples: array, frame_count: int, rate: int, sample_rate: int = 16000) -> list[float]:
+    """RMS for each timeline frame. Frames past the end of the audio are silent."""
+    hop = sample_rate / rate
+    total = len(samples)
+    levels = []
+    for index in range(frame_count):
+        start = min(total, round(index * hop))
+        end = min(total, round((index + 1) * hop))
+        chunk = samples[start:end]
+        if not chunk:
+            levels.append(0.0)
+            continue
+        levels.append(math.sqrt(sum(value * value for value in chunk) / len(chunk)) / 32768)
+    return levels
+
+
+def _local_scales(levels: list[float], rate: int) -> list[float]:
+    """90th percentile of a short rolling window, so a loud take does not pin the whole track."""
+    radius = max(1, round(_LOCAL_WINDOW_SECONDS * rate / 2))
+    scales = []
+    for index in range(len(levels)):
+        window = levels[max(0, index - radius) : index + radius + 1]
+        ordered = sorted(window)
+        high = ordered[min(len(ordered) - 1, int((len(ordered) - 1) * 0.90))]
+        scales.append(max(high, 0.008))
+    return scales
+
+
+def _smooth(values: list[float]) -> list[float]:
+    if len(values) < 3:
+        return list(values)
+    smoothed = [values[0]]
+    smoothed.extend(
+        (values[index - 1] + values[index] + values[index + 1]) / 3
+        for index in range(1, len(values) - 1)
+    )
+    smoothed.append(values[-1])
+    return smoothed
+
+
+def amplitude_mouth_states(levels: list[float], rate: int) -> list[str]:
+    """Map per-frame RMS to mouth states, opening on syllable peaks and closing in the valleys."""
+    _check_rate(rate)
     if not levels:
         return ["rest"]
-    rank = _mouth_rank(levels[0], 0)
-    states = [_MOUTHS[rank]]
-    age = 1
-    for level in levels[1:]:
-        target = _mouth_rank(level, rank)
-        if target != rank and age < _MOUTH_HOLD:
-            states.append(_MOUTHS[rank])
-            age += 1
+    normalized = _smooth([
+        0.0 if level < _SILENCE_RMS else min(1.5, level / scale)
+        for level, scale in zip(levels, _local_scales(levels, rate))
+    ])
+    peak_radius = max(1, round(_PEAK_WINDOW_SECONDS * rate))
+    states: list[str] = []
+    run = 0
+    armed = True
+    for index, level in enumerate(normalized):
+        if levels[index] < _SILENCE_RMS:
+            states.append("rest")
+            run = 0
+            armed = True
             continue
-        if target != rank:
-            rank = target
-            age = 1
+        window = normalized[max(0, index - peak_radius) : index + peak_radius + 1]
+        peak = max(window)
+        nucleus = level >= peak * _NEAR_PEAK and level >= _NUCLEUS_LEVEL
+        valley = level <= peak * _VALLEY_RATIO
+        if nucleus and level >= _WIDE_LEVEL:
+            state = "wide"
+        elif nucleus:
+            state = "open"
+        elif valley and level <= peak * _DEEP_VALLEY_RATIO:
+            state = "closed"
         else:
-            age += 1
-        states.append(_MOUTHS[rank])
+            state = "small"
+        if state in {"open", "wide"}:
+            if not armed or run >= _OPEN_RUN_CAP:
+                state = "small"
+                armed = False
+                run = 0
+            else:
+                run += 1
+        else:
+            run = 0
+            if valley or state == "closed":
+                armed = True
+        states.append(state)
     return states
 
 
-def mouth_track(voice: Path, rate: int = 15) -> list[str]:
+def mouth_track(voice: Path, rate: int = 15, duration: float | None = None) -> list[str]:
+    _check_rate(rate)
+    if duration is not None and (
+        isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0
+    ):
+        raise ProjectError("Audio duration must be a positive finite number")
     raw = run(
         [command("ffmpeg"), "-v", "error", "-i", str(voice), "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
         capture_output=True,
@@ -65,27 +154,24 @@ def mouth_track(voice: Path, rate: int = 15) -> list[str]:
     samples.frombytes(raw[: len(raw) // 2 * 2])
     if sys.byteorder != "little":
         samples.byteswap()
-    hop = max(1, 16000 // rate)
-    levels = []
-    for start in range(0, len(samples), hop):
-        chunk = samples[start : start + hop]
-        levels.append(math.sqrt(sum(v * v for v in chunk) / len(chunk)) / 32768 if chunk else 0)
-    if not levels:
+    if duration is None:
+        duration = len(samples) / 16000 if samples else 0.0
+    if duration <= 0:
         return ["rest"]
-    high = sorted(levels)[min(len(levels) - 1, round(len(levels) * .95))]
-    scale = max(high, .008)
-    return mouth_states([level / scale for level in levels])
+    frame_count = max(1, math.ceil(duration * rate))
+    return amplitude_mouth_states(frame_levels(samples, frame_count, rate), rate)
 
 
 def mouth_at(states: list[str], t: float, rate: int = 15) -> str:
+    if not states:
+        return "rest"
     return states[min(len(states) - 1, max(0, int(t * rate)))]
 
 
 def map_phonetic_cues(cues: list[dict], duration: float, rate: int = 15) -> list[str]:
     if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
         raise ProjectError("Audio duration must be a positive finite number")
-    if not isinstance(rate, int) or isinstance(rate, bool) or rate < 1 or rate > 120:
-        raise ProjectError("Mouth cue rate must be an integer between 1 and 120")
+    _check_rate(rate)
     if not isinstance(cues, list) or not cues:
         raise ProjectError("Rhubarb mouthCues must be a non-empty array")
     states = ["rest"] * max(1, math.ceil(duration * rate))
@@ -109,7 +195,7 @@ def phonetic_mouth_track(
     voice: Path, duration: float, work_dir: Path, executable: str | None = None, rate: int = 15,
 ) -> list[str] | None:
     """Return Rhubarb mouth states, or None when its optional CLI is unavailable."""
-    configured = executable or os.environ.get("RHUBARB_PATH") or shutil.which("rhubarb")
+    configured = executable or resolve_rhubarb(os.environ.get("RHUBARB_PATH"), shutil.which("rhubarb"))
     if not configured:
         return None
     work_dir.mkdir(parents=True, exist_ok=True)

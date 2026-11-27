@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from explainer_studio.audio import map_phonetic_cues, phonetic_mouth_track
 from explainer_studio.common import ProjectError, file_hash
-from explainer_studio.engine import _register_render_asset, avatar_intervals, custom_scene_clips
+from explainer_studio.engine import _register_render_asset, avatar_intervals, avatar_keyframes, custom_scene_clips
 from explainer_studio.timing import validate_words
 
 
@@ -78,6 +78,40 @@ class EngineTimelineTest(unittest.TestCase):
             map_phonetic_cues([{"start": 0, "end": 0.1, "value": "Y"}], 0.2)
         with self.assertRaises(ProjectError):
             map_phonetic_cues(cues, 0)
+
+    def test_closed_lip_shapes_include_puckered_f_and_follow_project_fps(self):
+        cues = [
+            {"start": 0.00, "end": 0.10, "value": "A"},
+            {"start": 0.10, "end": 0.20, "value": "F"},
+            {"start": 0.20, "end": 0.30, "value": "B"},
+            {"start": 0.30, "end": 0.40, "value": "E"},
+        ]
+        states = map_phonetic_cues(cues, 0.4, rate=30)
+        self.assertEqual(states[:3], ["closed"] * 3)
+        self.assertEqual(states[3:6], ["closed"] * 3)
+        self.assertEqual(states[6:9], ["small"] * 3)
+        self.assertEqual(states[9:12], ["small"] * 3)
+        # A 50 ms cue is one 15 Hz bucket, but it starts a frame later at 30 fps.
+        late = [{"start": 0.05, "end": 0.10, "value": "D"}]
+        self.assertEqual(map_phonetic_cues(late, 0.2)[0], "wide")
+        self.assertEqual(map_phonetic_cues(late, 0.2, rate=30)[0], "rest")
+        self.assertEqual(map_phonetic_cues(late, 0.2, rate=30)[1], "wide")
+
+    def test_avatar_keyframes_sample_mouth_tracks_at_project_fps(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "voice.wav").write_bytes(b"voice")
+            with patch("explainer_studio.engine.phonetic_mouth_track", return_value=None) as phonetic, patch(
+                "explainer_studio.engine.mouth_track", return_value=["small"] * 30,
+            ) as loudness:
+                keys = avatar_keyframes(
+                    root, {"voice": "voice.wav"}, {"scenes": [{"end": 1.0, "pose": "idle"}]}, {}, 1.0, 30, root,
+                )
+        phonetic.assert_called_once()
+        self.assertEqual(phonetic.call_args.kwargs["rate"], 30)
+        loudness.assert_called_once_with(root / "voice.wav", 30, 1.0)
+        self.assertEqual(len(keys), 30)
+        self.assertTrue(all(mouth == "small" for _pose, mouth, _blink in keys))
 
     def test_phonetic_adapter_converts_audio_and_maps_rhubarb_json(self):
         with tempfile.TemporaryDirectory() as temporary:

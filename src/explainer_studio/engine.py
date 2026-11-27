@@ -13,7 +13,7 @@ from bisect import bisect_right
 from pathlib import Path
 from uuid import uuid4
 
-from .audio import mouth_at, mouth_track, phonetic_mouth_track
+from .audio import mouth_track, phonetic_mouth_track
 from .captions import caption_options, DEFAULT_HOOK_FONT, font_stack
 from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_data, studio_home, write_json
 from .timing import storyboard_hash, validate_storyboard, validate_words
@@ -159,12 +159,15 @@ def avatar_keyframes(root: Path, project: dict, board: dict, profile: dict, dura
     voice = project_file(root, project["voice"])
     scenes = board["scenes"]
     ends = [float(scene["end"]) for scene in scenes]
-    states = phonetic_mouth_track(voice, duration, work_dir, profile.get("rhubarb_path")) or mouth_track(voice)
+    states = phonetic_mouth_track(
+        voice, duration, work_dir, profile.get("rhubarb_path"), rate=fps,
+    ) or mouth_track(voice, fps, duration)
     keys = []
     for frame in range(math.ceil(duration * fps)):
         time = min(duration - 1e-6, frame / fps)
         scene_index = min(len(scenes) - 1, bisect_right(ends, time))
-        keys.append((scenes[scene_index].get("pose", "idle"), mouth_at(states, time), _is_blinking(time)))
+        mouth = states[min(frame, len(states) - 1)] if states else "rest"
+        keys.append((scenes[scene_index].get("pose", "idle"), mouth, _is_blinking(time)))
     return keys
 
 
