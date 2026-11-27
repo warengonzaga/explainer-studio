@@ -119,7 +119,10 @@ def export_avatar(source: Path, target: Path, profile: dict, *, scale: float = 1
             image_name = f"avatar-{index:03d}.png"
             image_path = sprites_dir / image_name
             image = Image.new("RGBA", (sprite_width, sprite_height), (0, 0, 0, 0))
-            draw_avatar(image, source, project, pose, mouth, 0.05 if blink else 1.0, (0, 0, sprite_width, sprite_height))
+            draw_avatar(
+                image, source, project, pose, mouth, 0.05 if blink else 1.0,
+                (0, 0, sprite_width, sprite_height), fit_scale=scale,
+            )
             image.save(image_path)
             sprite_records[(pose, mouth, blink)] = {"file": f"sprites/{image_name}", "asset_id": None, "asset_path": None}
 

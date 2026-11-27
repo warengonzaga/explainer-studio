@@ -214,7 +214,23 @@ def copy_pack(source: Path, target: Path) -> None:
         shutil.copy2(source / relative, destination)
 
 
-def draw_avatar(canvas: Image.Image, root: Path, project: dict, pose: str, mouth: str, t: float, box: tuple[int, int, int, int]) -> None:
+def _fit_sprite(image: Image.Image, width: int, height: int, fit_scale: float = 1.0) -> Image.Image:
+    """Fit sprite art in the box. Export scales grow the scale-1 fit so the avatar does not shrink."""
+    if fit_scale == 1:
+        image.thumbnail((width, height), Image.Resampling.LANCZOS)
+        return image
+    contain = min(width / fit_scale / image.width, height / fit_scale / image.height)
+    factor = min(contain, 1.0) * fit_scale
+    size = (max(1, round(image.width * factor)), max(1, round(image.height * factor)))
+    if size == image.size:
+        return image
+    return image.resize(size, Image.Resampling.LANCZOS)
+
+
+def draw_avatar(
+    canvas: Image.Image, root: Path, project: dict, pose: str, mouth: str, t: float,
+    box: tuple[int, int, int, int], *, fit_scale: float = 1.0,
+) -> None:
     pack_relative = project.get("avatar_pack")
     if pack_relative:
         manifest = validate_pack(root, pack_relative, draft=bool(project.get("avatar_preview_draft")))
@@ -224,12 +240,15 @@ def draw_avatar(canvas: Image.Image, root: Path, project: dict, pose: str, mouth
         pack = _bundled_default_pack()
         manifest = validate_pack(pack.parent, pack.name, allow_bundled_legacy=True)
     if manifest.get("format_version") == 1:
-        _draw_v1_avatar(canvas, pack, manifest, pose, mouth, t, box)
+        _draw_v1_avatar(canvas, pack, manifest, pose, mouth, t, box, fit_scale)
         return
-    _draw_legacy_avatar(canvas, pack, manifest, pose, mouth, t, box)
+    _draw_legacy_avatar(canvas, pack, manifest, pose, mouth, t, box, fit_scale)
 
 
-def _draw_legacy_avatar(canvas: Image.Image, pack: Path, manifest: dict, pose: str, mouth: str, t: float, box: tuple[int, int, int, int]) -> None:
+def _draw_legacy_avatar(
+    canvas: Image.Image, pack: Path, manifest: dict, pose: str, mouth: str, t: float,
+    box: tuple[int, int, int, int], fit_scale: float,
+) -> None:
     if pose in {"point_right", "point_viewer"}:
         pose = "point"
     if pose not in POSES:
@@ -243,8 +262,7 @@ def _draw_legacy_avatar(canvas: Image.Image, pack: Path, manifest: dict, pose: s
         pose_path = pack / manifest["poses"].get(pose, manifest["poses"]["idle"])
     x, y, w, h = box
     with Image.open(pose_path) as source:
-        sprite = source.convert("RGBA")
-        sprite.thumbnail((w, h), Image.Resampling.LANCZOS)
+        sprite = _fit_sprite(source.convert("RGBA"), w, h, fit_scale)
     sx = x + (w - sprite.width) // 2
     sy = y + h - sprite.height
     canvas.paste(sprite, (sx, sy), sprite)
@@ -256,13 +274,16 @@ def _draw_legacy_avatar(canvas: Image.Image, pack: Path, manifest: dict, pose: s
         with Image.open(pack / mouth_file) as source:
             patch = source.convert("RGBA")
             target_w = max(2, round(sprite.width * float(fit.get("width", manifest.get("mouth_width", .13))) * float(fit.get("scale", 1))))
-            patch.thumbnail((target_w, target_w * 2), Image.Resampling.LANCZOS)
+            patch = _fit_sprite(patch, target_w, target_w * 2, fit_scale)
         canvas.paste(patch, (round(mx - patch.width / 2), round(my - patch.height / 2)), patch)
     else:
         _mouth(ImageDraw.Draw(canvas), mx, my, sprite.width * float(fit.get("width", manifest.get("mouth_width", .13))) * float(fit.get("scale", 1)), mouth, _hex(project.get("colors", {}).get("ink"), "#12223B"))
 
 
-def _draw_v1_avatar(canvas: Image.Image, pack: Path, manifest: dict, pose: str, mouth: str, t: float, box: tuple[int, int, int, int]) -> None:
+def _draw_v1_avatar(
+    canvas: Image.Image, pack: Path, manifest: dict, pose: str, mouth: str, t: float,
+    box: tuple[int, int, int, int], fit_scale: float,
+) -> None:
     if pose.startswith("point_"):
         category, frame = "pointing", pose.removeprefix("point_")
         gaze = "open" if frame == "viewer" else frame
@@ -285,8 +306,7 @@ def _draw_v1_avatar(canvas: Image.Image, pack: Path, manifest: dict, pose: str, 
     entries.append((sheet_set["mouth"][mouth_category], mouth_frame, manifest["face"]["mouth"]))
     pose_sheet, pose_rect = entries[0][0], entries[0][0]["frames"][frame]
     x, y, w, h = box
-    base = _crop_sheet(pack, pose_sheet, pose_rect)
-    base.thumbnail((w, h), Image.Resampling.LANCZOS)
+    base = _fit_sprite(_crop_sheet(pack, pose_sheet, pose_rect), w, h, fit_scale)
     sx, sy = x + (w - base.width) // 2, y + h - base.height
     canvas.paste(base, (sx, sy), base)
     pose_width, pose_height = pose_rect[2], pose_rect[3]
