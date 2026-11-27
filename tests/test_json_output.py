@@ -323,6 +323,7 @@ class JsonOutputTest(unittest.TestCase):
         self.assertIn("0.3.0", payload["error"])
         self.assertIn("npm install --global aivee@latest", payload["error"])
         self.assertIn("caption keyword emphasis", payload["error"])
+        self.assertIn("region QA", payload["error"])
 
     def test_doctor_still_suggests_setup_when_rhubarb_path_is_set(self):
         binary = self.home / "custom-rhubarb"
