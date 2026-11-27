@@ -13,6 +13,7 @@ Explainer Studio is an agent plugin for creating narrated explainer videos from 
 - Use the bundled Emo robot presenter or prepare a custom sprite pack.
 - Start with the bundled presenter, a clean motion-graphics style, and phrase captions in a speech bubble beside the avatar.
 - Compose scenes, avatar states, and narration in an editable AIVEE timeline.
+- Optionally mix sound effects from an editable cue list after render. AIVEE 0.3.0 or later is required; the original render stays in place.
 - Render landscape or portrait video through AIVEE and run basic media checks.
 - Keep prior narration and renders intact when creating a new take.
 
@@ -36,6 +37,8 @@ For a reusable animated scene starter with timed signal movement, a counter, rou
 Generic starters for a hook, numbered steps, a before/after comparison, and a badge are in [`library/templates`](library/templates/README.md). `explainer templates` lists them. `explainer add-template <project> <starter> --scene <number>` fills the project theme, canvas, and that scene's duration, places the graphic clear of the avatar and captions, and attaches the scene. Use `--set key=value` for on-screen copy. Omit `--scene` and pass `--duration` to write the file without attaching it. The command does not replace an existing scene file.
 
 Create a portrait project with `explainer init <project> --format reel`. This sets both the Studio project and AIVEE canvas to 1080 × 1920 at 30 fps. Rendering a Reel project automatically uses portrait placement and safe-zone checks; existing landscape projects can still opt in with `render --portrait`.
+
+Sound effects are off until you opt in. `explainer sound-pack-install` writes a small synthesized pack (`whoosh`, `pop`, `click`, and `ding`) into `Sound Packs` beside the avatar packs in the AIVEE library. `explainer sfx-cues <project>` builds `sfx-cues.json` from the storyboard and timeline: scene changes and transitions become whooshes, element, badge, and step appearances become pops, and clicks or typing in a scene starter become clicks. Edit that file, then render with `render --sfx`. `--duck-under-speech` and `--gain-cap-db` are optional and follow AIVEE's `sfx` mix. The mixed file is a new `*-sfx` render; the unmixed file is left as it is. The same choices can be saved on the project under `sfx` (`enabled`, `pack`, `duckUnderSpeech`, `gainCapDb`, `mapping`). `doctor` reports when the installed AIVEE is older than 0.3.0. `sound-pack-search` and `sound-pack-add` can pull a Creative Commons clip from Openverse into a pack and record its license and attribution. See the [sound pack format](docs/sound-pack-format.md).
 
 Caption presets are saved once in the creator profile and applied by default to new and existing projects. The default uses bold white captions, a yellow keyword highlight, a soft shadow, and Bebas Neue for scene hooks. Set the caption font, keyword color, placement, or hook font with `setup --caption-font`, `--caption-keyword-color`, `--caption-x`, `--caption-y`, `--caption-width`, `--caption-height`, and `--hook-font`. Placement values are normalized from 0 to 1; portrait renders still enforce the Reels safe area. Studio warns when a configured font is missing or cannot be checked. Project and scene caption options can override the profile preset.
 
@@ -136,7 +139,7 @@ Releases follow Clean Flow: merge feature work into `dev`, then promote stable `
 
 ## 📋 Limitations
 
-Studio guides story, narration timing, storyboard review, and explainer-specific assets; AIVEE handles editable timeline composition and rendering. It does not capture microphone audio or generate images inside the plugin. Automatic transcription downloads a model on first use. The five-state sample avatar groups related phonetic cues; a pack with dedicated Rhubarb A-H artwork can improve articulation detail. Full resolution renders depend on local CPU, memory, and FFmpeg performance.
+Studio guides story, narration timing, storyboard review, and explainer-specific assets; AIVEE handles editable timeline composition and rendering. Sound-effect mixing needs AIVEE 0.3.0 or later and stays off unless a render asks for it. It does not capture microphone audio or generate images inside the plugin. Automatic transcription downloads a model on first use. The five-state sample avatar groups related phonetic cues; a pack with dedicated Rhubarb A-H artwork can improve articulation detail. Full resolution renders depend on local CPU, memory, and FFmpeg performance.
 
 ## 📄 License
 

@@ -435,12 +435,20 @@ def doctor(args) -> None:
         version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
         checks["aivee"] = version
         lines.append(f"aivee: {version} ({package_root})")
+        from .sfx import sfx_doctor_status
+
+        sfx_status = sfx_doctor_status(version if isinstance(version, str) else None)
     except ProjectError as exc:
         lines.append(f"aivee: NOT READY ({exc})")
         missing.append("AIVEE (run `explainer install-engine`)")
         install_aivee = _aivee_can_be_installed(str(exc))
+        from .sfx import sfx_doctor_status
+
+        sfx_status = sfx_doctor_status(None)
     else:
         install_aivee = False
+    checks["sfx"] = {"available": sfx_status["available"], "version": sfx_status["version"]}
+    lines.append(sfx_status["line"])
     from .engine import _browser_env
     browser = _browser_env(studio_home() / "browser-cache").get("HYPERFRAMES_BROWSER_PATH")
     checks["render_browser"] = browser
@@ -1006,6 +1014,72 @@ def safe_check_command(args) -> None:
     emit(args, report, [], f"PASS: checked {report['compositions']} native compositions at {report.get('sample_rate', 0)} samples/second")
 
 
+def sfx_cues_command(args) -> None:
+    from .sfx import derive_cues, load_mapping, project_sfx_settings, resolve_pack, write_cues
+
+    root = Path(args.project).resolve()
+    profile = load_profile()
+    settings = project_sfx_settings(root)
+    pack = resolve_pack(args.pack or settings.get("pack"), profile, install_default=not args.pack)
+    mapping = load_mapping(Path(args.map).resolve() if args.map else None, settings.get("mapping"))
+    document = derive_cues(root, pack, mapping)
+    path = write_cues(root, document, force=args.force)
+    emit(
+        args,
+        {"cues": str(path), "count": len(document["cues"]), "pack": document["pack"]},
+        [],
+        f"{len(document['cues'])} sound cues written to {path}; review and edit them before rendering",
+    )
+
+
+def sound_pack_install_command(args) -> None:
+    from .sfx import install_default_pack, sound_library
+
+    library = sound_library(load_profile())
+    pack = install_default_pack(library)
+    emit(args, {"pack": str(pack)}, [], f"sound pack installed: {pack}")
+
+
+def sound_pack_validate_command(args) -> None:
+    from .sfx import validate_pack
+
+    pack = Path(args.pack).expanduser().resolve()
+    manifest = validate_pack(pack)
+    message = f"valid sound pack: {manifest['name']} ({manifest['id']}@{manifest['version']})"
+    emit(args, {"name": manifest["name"], "id": manifest["id"], "version": manifest["version"]}, [], message)
+
+
+def sound_pack_search_command(args) -> None:
+    from .sfx import search_openverse
+
+    results = search_openverse(args.query, page_size=args.page_size)
+    lines = [
+        f"{index}. {item['title']} — {item['license']} — {item['attribution']}"
+        for index, item in enumerate(results, start=1)
+    ] or ["no Creative Commons audio matched"]
+    emit(args, {"results": results}, [], *lines)
+
+
+def sound_pack_add_command(args) -> None:
+    from .sfx import add_openverse_result
+
+    pack = Path(args.pack).expanduser().resolve()
+    entry = add_openverse_result(pack, args.role, args.query, pick=args.pick)
+    emit(
+        args,
+        {"pack": str(pack), "role": args.role, "license": entry["license"], "attribution": entry["attribution"], "file": entry["file"]},
+        [],
+        f"added {args.role}: {entry['attribution']}",
+    )
+
+
+def _add_sfx_render_flags(parser) -> None:
+    parser.add_argument("--sfx", action=argparse.BooleanOptionalAction, default=None, help="mix sound effects after render")
+    parser.add_argument("--duck-under-speech", action=argparse.BooleanOptionalAction, default=None, help="duck sound effects under the original audio")
+    parser.add_argument("--gain-cap-db", type=float, help="limit the sound-effect bus from -24 to 0")
+    parser.add_argument("--sfx-pack", help="sound pack id or folder")
+
+
 def default_render_name(*, preview: bool, portrait: bool) -> str:
     suffix = "-portrait" if portrait else ""
     return f"{'draft' if preview else 'final'}{suffix}-engine.mp4"
@@ -1026,9 +1100,23 @@ def render_engine_command(args) -> None:
             pass
     profile = load_profile()
     font_warnings = warn_missing_fonts(profile, stream=False if args.json else None)
+    from .sfx import apply_sfx, preflight_sfx, project_sfx_settings, require_sfx_aivee, resolve_render_sfx
+
+    sfx = resolve_render_sfx(args, project_sfx_settings(root))
+    sfx_command = None
+    if sfx is not None:
+        preflight_sfx(root, profile, sfx["pack"])
+        sfx_command, _ = require_sfx_aivee()
     target = Path(args.output).resolve() if args.output else root / "renders" / default_render_name(preview=args.preview, portrait=portrait)
     output = render_with_engine(root, target, profile, preview=args.preview, portrait=portrait)
+    source_video = None
+    if sfx is not None:
+        source_video = output
+        output = apply_sfx(root, output, profile, pack=sfx["pack"], options=sfx["options"], command=sfx_command)
     data = {"video": str(output), "preview": bool(args.preview), "portrait": bool(portrait), "warnings": font_warnings}
+    if source_video is not None:
+        data["source_video"] = str(source_video)
+        data["sfx"] = True
     if args.preview:
         data["review_gate"] = "preview"
         steps = [command_step("contact-sheet", str(root), str(output))]
@@ -1205,17 +1293,40 @@ def main(argv: list[str] | None = None) -> int:
     p = add_command(sub, json_flags, "approve", help="mark a reviewed storyboard approved")
     p.add_argument("project")
     p.set_defaults(handler=approve)
+    p = add_command(sub, json_flags, "sfx-cues", help="write an editable sound-effect cue list from the timeline")
+    p.add_argument("project")
+    p.add_argument("--pack", help="sound pack id or folder; defaults to the synthesized pack")
+    p.add_argument("--map", help="JSON file of event, gain, and fade overrides")
+    p.add_argument("--force", action="store_true", help="replace an existing cue list")
+    p.set_defaults(handler=sfx_cues_command)
+    p = add_command(sub, json_flags, "sound-pack-install", help="install the synthesized default sound pack into the library")
+    p.set_defaults(handler=sound_pack_install_command)
+    p = add_command(sub, json_flags, "sound-pack-validate", help="validate a sound pack folder")
+    p.add_argument("pack")
+    p.set_defaults(handler=sound_pack_validate_command)
+    p = add_command(sub, json_flags, "sound-pack-search", help="search Openverse for Creative Commons audio")
+    p.add_argument("--query", required=True)
+    p.add_argument("--page-size", type=int, default=5)
+    p.set_defaults(handler=sound_pack_search_command)
+    p = add_command(sub, json_flags, "sound-pack-add", help="add a Creative Commons Openverse recording to a sound pack role")
+    p.add_argument("pack")
+    p.add_argument("role")
+    p.add_argument("--query", required=True)
+    p.add_argument("--pick", type=int, default=1, help="1-based match to add")
+    p.set_defaults(handler=sound_pack_add_command)
     p = add_command(sub, json_flags, "render", help="render a preview or final MP4 through the AI Video Editing Engine")
     p.add_argument("project")
     p.add_argument("--preview", action="store_true", help="render a draft before storyboard approval")
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
+    _add_sfx_render_flags(p)
     p.set_defaults(handler=render_engine_command)
     p = add_command(sub, json_flags, "render-engine", help="render through the AI Video Editing Engine")
     p.add_argument("project")
     p.add_argument("--preview", action="store_true", help="render a draft before storyboard approval")
     p.add_argument("--portrait", action="store_true")
     p.add_argument("--output")
+    _add_sfx_render_flags(p)
     p.set_defaults(handler=render_engine_command)
     p = add_command(sub, json_flags, "check", help="run media, sync, flicker, and portrait safe-zone checks")
     p.add_argument("project")
