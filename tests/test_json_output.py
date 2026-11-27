@@ -498,7 +498,7 @@ class JsonOutputTest(unittest.TestCase):
         self.assert_result(payload, "export-avatar", True)
         self.assertEqual(payload["data"], result)
         self.assertEqual(payload["next_steps"], [])
-        export.assert_called_once_with(Path("/tmp/studio"), Path("/tmp/native"), {"brand": "Acme"})
+        export.assert_called_once_with(Path("/tmp/studio"), Path("/tmp/native"), {"brand": "Acme"}, scale=1.0)
 
     def test_render_infers_portrait_from_project_format(self):
         self.write_profile()

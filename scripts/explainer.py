@@ -44,6 +44,12 @@ def launch() -> None:
             raise SystemExit(1)
 
     sys.path.insert(0, str(plugin_root / "src"))
+    if not os.environ.get("RHUBARB_PATH"):
+        from explainer_studio.rhubarb import installed_rhubarb_path
+
+        installed = installed_rhubarb_path(home)
+        if installed.is_file():
+            os.environ["RHUBARB_PATH"] = str(installed)
     from explainer_studio.cli import main
 
     raise SystemExit(main())

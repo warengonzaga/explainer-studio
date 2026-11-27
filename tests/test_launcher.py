@@ -91,6 +91,28 @@ class LauncherVenvTest(unittest.TestCase):
                     launcher.launch()
             self.assertEqual(raised.exception.code, 0)
 
+    def test_launch_wires_installed_rhubarb_when_env_is_unset(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "home"
+            interpreter = self.make_symlinked_venv(home)
+            binary = home / "rhubarb" / "1.14.0" / "rhubarb"
+            binary.parent.mkdir(parents=True)
+            binary.write_text("#!/bin/sh\n", encoding="utf-8")
+            child_prefix = Path(subprocess.check_output(
+                [str(interpreter), "-c", "import sys; print(sys.prefix)"],
+                text=True,
+            ).strip())
+            with (
+                patch.dict(os.environ, {"EXPLAINER_STUDIO_HOME": str(home)}, clear=False),
+                patch.object(launcher.sys, "prefix", str(child_prefix)),
+                patch("explainer_studio.cli.main", return_value=0),
+            ):
+                os.environ.pop("RHUBARB_PATH", None)
+                with self.assertRaises(SystemExit) as raised:
+                    launcher.launch()
+                self.assertEqual(raised.exception.code, 0)
+                self.assertEqual(os.environ.get("RHUBARB_PATH"), str(binary))
+
     def test_incomplete_managed_env_keeps_text_and_json_apart(self):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary) / "home"
