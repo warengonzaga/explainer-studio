@@ -1267,6 +1267,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"error: {exc}", file=sys.stderr)
         return 1
+    except Exception as exc:
+        if not getattr(args, "json", False):
+            raise
+        message = str(exc).strip() or type(exc).__name__
+        print(json.dumps(command_payload(args.command, {}, [], ok=False, error=message), ensure_ascii=False))
+        return 1
 
 
 if __name__ == "__main__":

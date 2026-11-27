@@ -7,6 +7,12 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ## [Unreleased]
 
 
+## [0.3.1] - 2026-11-27
+
+### Changed
+
+- fix render crash and package safe-check runner (#70)
+
 ## [0.3.0] - 2026-11-22
 
 ### Added

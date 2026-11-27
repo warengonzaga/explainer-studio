@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "explainer-studio"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local-first, voice-timed explainer video toolkit"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -19,3 +19,6 @@ explainer = "explainer_studio.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+explainer_studio = ["scripts/safe_check.mjs"]
