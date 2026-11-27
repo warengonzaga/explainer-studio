@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from explainer_studio.audio import map_phonetic_cues, phonetic_mouth_track
 from explainer_studio.common import ProjectError, file_hash
-from explainer_studio.engine import _register_render_asset, avatar_intervals, avatar_keyframes, custom_scene_clips
+from explainer_studio.engine import _register_render_asset, avatar_intervals, avatar_keyframes, custom_scene_clips, render_with_engine
 from explainer_studio.timing import validate_words
 
 
@@ -153,6 +153,73 @@ class EngineTimelineTest(unittest.TestCase):
                 with self.assertRaises(ProjectError):
                     phonetic_mouth_track(home / "voice.mp3", 0.4, home, None)
         self.assertEqual(run_rhubarb.call_args.args[0][0], "/missing/rhubarb")
+
+    def test_render_merges_caption_options_without_shadowing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data = root / "studio-data" / "explainer"
+            voice = root / "assets" / "voice.wav"
+            data.mkdir(parents=True)
+            voice.parent.mkdir()
+            voice.write_bytes(b"voice")
+            (data / "project.json").write_text(json.dumps({
+                "voice": "assets/voice.wav", "width": 1920, "height": 1080, "fps": 30,
+                "caption": {"fontFamily": "Source Sans 3", "color": "#112233"},
+            }), encoding="utf-8")
+            (data / "storyboard.json").write_text(json.dumps({
+                "scenes": [{
+                    "start": 0, "end": 1, "headline": "Hello", "pose": "idle",
+                    "caption": {"fontSize": 40, "bubble": {"tailSide": "right"}},
+                }],
+            }), encoding="utf-8")
+            (data / "words.json").write_text(json.dumps([
+                {"text": "hello", "start": 0.1, "end": 0.4},
+            ]), encoding="utf-8")
+            (root / "timeline.json").write_text(json.dumps({"project": {}, "tracks": []}), encoding="utf-8")
+            captured = {}
+
+            def engine_cli(_command, _cwd, args, env=None):
+                if args[:2] == ["asset", "list"]:
+                    return json.dumps({"assets": []})
+                if args[:2] == ["asset", "register"]:
+                    return json.dumps({"id": args[-1], "sha256": "abc"})
+                if args[:2] == ["timeline", "captions"]:
+                    captured["options"] = json.loads(Path(args[-1]).read_text(encoding="utf-8"))
+                    Path(args[-2]).write_text(json.dumps({"clips": [{"id": "cap-1"}]}), encoding="utf-8")
+                    return ""
+                if args[:2] in (["timeline", "validate"], ["timeline", "render"]):
+                    return ""
+                raise AssertionError(args)
+
+            output = root / "renders" / "draft-engine.mp4"
+            profile = {
+                "colors": {"ink": "#172236", "accent": "#426BEB"},
+                "caption": {"fontWeight": 700},
+            }
+            with patch("explainer_studio.engine.probe_duration", return_value=1.0), patch(
+                "explainer_studio.engine.validate_storyboard",
+            ), patch("explainer_studio.engine.validate_words"), patch(
+                "explainer_studio.engine.resolve_aivee", return_value=(["node", "aivee"], str(root)),
+            ), patch(
+                "explainer_studio.engine.avatar_keyframes", return_value=[("idle", "rest", False)],
+            ), patch("explainer_studio.avatar.draw_avatar"), patch(
+                "explainer_studio.engine._engine_cli", side_effect=engine_cli,
+            ), patch(
+                "explainer_studio.engine._write_engine_timeline",
+                side_effect=lambda _root, path, timeline: path.write_text(json.dumps(timeline), encoding="utf-8"),
+            ):
+                result = render_with_engine(root, output, profile, preview=True)
+
+        self.assertEqual(result, output)
+        options = captured["options"]
+        self.assertEqual(options["fontFamily"], "Source Sans 3, sans-serif")
+        self.assertEqual(options["color"], "#112233")
+        self.assertEqual(options["fontWeight"], 700)
+        self.assertEqual(options["fontSize"], 40)
+        self.assertEqual(options["layoutPreset"], "speechBubble")
+        self.assertEqual(options["wordsPerCaption"], 6)
+        self.assertEqual(options["bubble"]["tailSide"], "right")
+        self.assertEqual(options["bubble"]["tailPosition"], 0.35)
 
     def test_avatar_intervals_merge_matching_frames_and_trim_final_frame(self):
         keys = [
