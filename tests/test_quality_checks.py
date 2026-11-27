@@ -173,7 +173,7 @@ class QualityChecksTest(unittest.TestCase):
     def test_built_wheel_includes_safe_check_runner(self):
         with tempfile.TemporaryDirectory() as temporary:
             completed = subprocess.run(
-                [sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "-w", temporary, str(ROOT)],
+                [sys.executable, "-m", "pip", "wheel", "--no-deps", "-w", temporary, str(ROOT)],
                 capture_output=True, text=True,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
