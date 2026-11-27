@@ -39,6 +39,10 @@ Create a portrait project with `explainer init <project> --format reel`. This se
 
 Caption presets are saved once in the creator profile and applied by default to new and existing projects. The default uses bold white captions, a yellow keyword highlight, a soft shadow, and Bebas Neue for scene hooks. Set the caption font, keyword color, placement, or hook font with `setup --caption-font`, `--caption-keyword-color`, `--caption-x`, `--caption-y`, `--caption-width`, `--caption-height`, and `--hook-font`. Placement values are normalized from 0 to 1; portrait renders still enforce the Reels safe area. Studio warns when a configured font is missing or cannot be checked. Project and scene caption options can override the profile preset.
 
+Portrait captions default to 32 px type, two words per line, six words per caption, and 22 px of padding. Landscape captions default to 48 px type, three words per line, and six words per caption. Either format can replace `fontSize`, `wordsPerLine`, `wordsPerCaption`, or `paddingPixels` on the project or scene `caption` object. AIVEE keeps a hyphenated word, such as `open-source`, on one line.
+
+Keyword emphasis is on by default and needs AIVEE 0.3.0 or newer. Each scene may set `emphasis` to a list of words. A string is still read as one keyword. When `emphasis` is omitted, Studio picks the longest word in the headline, or in the scene body when the headline has no word of four or more characters. Equal lengths keep the earlier word. The picked word stays whole, including hyphens. An empty list adds no emphasis. The resting color is `caption.emphasisColor`, or the keyword highlight color when that is unset. Turn emphasis off with `setup --no-caption-emphasis`, or set `caption.keywordEmphasis` to false on the profile, project, or scene. `explainer doctor` names this requirement when the installed AIVEE is older.
+
 ## 🚀 Quick start
 
 Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or Edge. Studio uses npm's global AIVEE installation. When running from a source checkout, bootstrap Studio's managed Python environment:

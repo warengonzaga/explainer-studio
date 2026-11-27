@@ -13,7 +13,15 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from explainer_studio.audio import map_phonetic_cues, phonetic_mouth_track
 from explainer_studio.common import ProjectError, file_hash
-from explainer_studio.engine import _register_render_asset, avatar_intervals, avatar_keyframes, custom_scene_clips, render_with_engine
+from explainer_studio.engine import (
+    _register_render_asset,
+    aivee_version_gap,
+    avatar_intervals,
+    avatar_keyframes,
+    custom_scene_clips,
+    parse_aivee_version,
+    render_with_engine,
+)
 from explainer_studio.timing import validate_words
 
 
@@ -168,14 +176,15 @@ class EngineTimelineTest(unittest.TestCase):
             }), encoding="utf-8")
             (data / "storyboard.json").write_text(json.dumps({
                 "scenes": [{
-                    "start": 0, "end": 1, "headline": "Hello", "pose": "idle",
+                    "start": 0, "end": 1, "headline": "Ship open-source tools", "pose": "idle",
                     "caption": {"fontSize": 40, "bubble": {"tailSide": "right"}},
                 }],
             }), encoding="utf-8")
             (data / "words.json").write_text(json.dumps([
-                {"text": "hello", "start": 0.1, "end": 0.4},
+                {"text": "open-source", "start": 0.1, "end": 0.4},
             ]), encoding="utf-8")
             (root / "timeline.json").write_text(json.dumps({"project": {}, "tracks": []}), encoding="utf-8")
+            (root / "package.json").write_text(json.dumps({"version": "0.3.0"}), encoding="utf-8")
             captured = {}
 
             def engine_cli(_command, _cwd, args, env=None):
@@ -185,6 +194,7 @@ class EngineTimelineTest(unittest.TestCase):
                     return json.dumps({"id": args[-1], "sha256": "abc"})
                 if args[:2] == ["timeline", "captions"]:
                     captured["options"] = json.loads(Path(args[-1]).read_text(encoding="utf-8"))
+                    captured["transcript"] = json.loads(Path(args[-3]).read_text(encoding="utf-8"))
                     Path(args[-2]).write_text(json.dumps({"clips": [{"id": "cap-1"}]}), encoding="utf-8")
                     return ""
                 if args[:2] in (["timeline", "validate"], ["timeline", "render"]):
@@ -220,6 +230,50 @@ class EngineTimelineTest(unittest.TestCase):
         self.assertEqual(options["wordsPerCaption"], 6)
         self.assertEqual(options["bubble"]["tailSide"], "right")
         self.assertEqual(options["bubble"]["tailPosition"], 0.35)
+        self.assertEqual(options["wordWrap"], True)
+        self.assertEqual(options["emphasisWords"], ["open-source"])
+        self.assertEqual(options["emphasisColor"], "#FFE45C")
+        self.assertEqual(captured["transcript"]["words"][0]["text"], "open-source")
+        self.assertNotIn("keywordEmphasis", options)
+
+    def test_aivee_version_gap_names_the_caption_update(self):
+        self.assertIsNone(aivee_version_gap("0.3.0", feature="caption keyword emphasis"))
+        self.assertIsNone(aivee_version_gap("0.3.0-dev.1", feature="caption keyword emphasis"))
+        self.assertEqual(parse_aivee_version("unknown"), None)
+        gap = aivee_version_gap("0.2.0", feature="caption keyword emphasis")
+        self.assertIn("0.3.0", gap)
+        self.assertIn("npm install --global aivee@latest", gap)
+        self.assertIn("explainer doctor", gap)
+
+    def test_render_stops_when_caption_emphasis_needs_a_newer_aivee(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data = root / "studio-data" / "explainer"
+            data.mkdir(parents=True)
+            (root / "assets").mkdir()
+            (root / "assets" / "voice.wav").write_bytes(b"voice")
+            (data / "project.json").write_text(json.dumps({
+                "voice": "assets/voice.wav", "width": 1920, "height": 1080, "fps": 30,
+            }), encoding="utf-8")
+            (data / "storyboard.json").write_text(json.dumps({
+                "scenes": [{"start": 0, "end": 1, "headline": "Timeline tools", "pose": "idle"}],
+            }), encoding="utf-8")
+            (data / "words.json").write_text(json.dumps([
+                {"text": "timeline", "start": 0.1, "end": 0.4},
+            ]), encoding="utf-8")
+            (root / "timeline.json").write_text(json.dumps({"project": {}, "tracks": []}), encoding="utf-8")
+            (root / "package.json").write_text(json.dumps({"version": "0.2.0"}), encoding="utf-8")
+            with patch("explainer_studio.engine.probe_duration", return_value=1.0), patch(
+                "explainer_studio.engine.validate_storyboard",
+            ), patch("explainer_studio.engine.validate_words"), patch(
+                "explainer_studio.engine.resolve_aivee", return_value=(["node", "aivee"], str(root)),
+            ), patch(
+                "explainer_studio.engine.avatar_keyframes", return_value=[("idle", "rest", False)],
+            ), patch("explainer_studio.avatar.draw_avatar"), patch(
+                "explainer_studio.engine._engine_cli", return_value=json.dumps({"assets": []}),
+            ):
+                with self.assertRaisesRegex(ProjectError, "caption keyword emphasis"):
+                    render_with_engine(root, root / "renders" / "draft-engine.mp4", {"colors": {}}, preview=True)
 
     def test_avatar_intervals_merge_matching_frames_and_trim_final_frame(self):
         keys = [

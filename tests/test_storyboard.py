@@ -1,13 +1,16 @@
 """Storyboard headline shortening."""
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from explainer_studio.timing import scene_headline
+from explainer_studio.timing import build_storyboard, scene_headline
 
 
 class StoryboardHeadlineTest(unittest.TestCase):
@@ -36,3 +39,20 @@ class StoryboardHeadlineTest(unittest.TestCase):
     def test_stops_at_the_latest_sentence_that_fits(self):
         text = "One. Two. Three more words follow after this point today."
         self.assertEqual(scene_headline(text), "One. Two.")
+
+    def test_generated_emphasis_keeps_a_hyphenated_word(self):
+        paragraph = "Open-source tools save time for everyone."
+        spoken = ["Open", "source", "tools", "save", "time", "for", "everyone"]
+        words = [
+            {"text": text, "start": index / 10, "end": index / 10 + 0.05}
+            for index, text in enumerate(spoken, start=1)
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "project.json").write_text(json.dumps({"voice": "voice.wav"}), encoding="utf-8")
+            (root / "voice.wav").write_bytes(b"voice")
+            (root / "script.txt").write_text(paragraph + "\n", encoding="utf-8")
+            (root / "words.json").write_text(json.dumps(words), encoding="utf-8")
+            with patch("explainer_studio.timing.probe_duration", return_value=2):
+                board = build_storyboard(root)
+        self.assertEqual(board["scenes"][0]["emphasis"], ["Open-source"])

@@ -14,7 +14,14 @@ from pathlib import Path
 from uuid import uuid4
 
 from .audio import mouth_track, phonetic_mouth_track
-from .captions import caption_options, DEFAULT_HOOK_FONT, font_stack
+from .captions import (
+    caption_options,
+    format_caption_defaults,
+    keyword_emphasis_enabled,
+    prepare_caption_emphasis,
+    DEFAULT_HOOK_FONT,
+    font_stack,
+)
 from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_data, studio_home, write_json
 from .timing import storyboard_hash, validate_storyboard, validate_words
 
@@ -117,6 +124,48 @@ def ensure_aivee() -> tuple[list[str], str]:
     if not installed or not _verify_aivee(installed[0]):
         raise ProjectError("AIVEE installation completed but the global CLI is unavailable or incompatible; check npm's global prefix and render requirements")
     return installed
+
+
+AIVEE_CAPTION_VERSION = (0, 3, 0)
+
+
+def parse_aivee_version(text: str) -> tuple[int, int, int] | None:
+    """Return a release triple, ignoring a prerelease or build suffix."""
+    if not isinstance(text, str):
+        return None
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", text.strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def aivee_package_version(package_root: str) -> str:
+    manifest_path = Path(package_root) / "package.json"
+    if not manifest_path.is_file():
+        return "unknown"
+    try:
+        version = read_json(manifest_path).get("version", "unknown")
+    except ProjectError:
+        return "unknown"
+    return version if isinstance(version, str) else "unknown"
+
+
+def aivee_version_gap(version: str, *, feature: str) -> str | None:
+    """Message when the installed AIVEE is older than the feature requires."""
+    parsed = parse_aivee_version(version)
+    if parsed is not None and parsed >= AIVEE_CAPTION_VERSION:
+        return None
+    needed = ".".join(str(part) for part in AIVEE_CAPTION_VERSION)
+    return (
+        f"AIVEE {needed} or newer is required for {feature}; "
+        f"this install is {version}. Run `npm install --global aivee@latest`, then `explainer doctor`."
+    )
+
+
+def require_aivee_version(package_root: str, feature: str) -> None:
+    gap = aivee_version_gap(aivee_package_version(package_root), feature=feature)
+    if gap:
+        raise ProjectError(gap)
 
 
 def _verify_aivee(command: list[str]) -> bool:
@@ -373,7 +422,7 @@ def portrait_regions() -> dict[str, dict[str, float]]:
 
 def portrait_caption() -> dict[str, int]:
     """Portrait speech-bubble type. AIVEE keeps the font size and paints overflow outside the box."""
-    return {"fontSize": 32, "wordsPerLine": 2, "wordsPerCaption": 6, "paddingPixels": 22}
+    return format_caption_defaults(portrait=True)
 
 
 def ensure_render_allowed(board: dict, *, preview: bool) -> None:
@@ -415,7 +464,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
     if output.exists():
         raise ProjectError(f"output already exists: {output}")
 
-    engine_command, _ = resolve_aivee()
+    engine_command, package_root = resolve_aivee()
     width, height = (1080, 1920) if portrait else (int(project.get("width", 1920)), int(project.get("height", 1080)))
     portrait = portrait or height > width
     fps = int(project.get("fps", 60))
@@ -508,20 +557,27 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
         if not isinstance(project_caption, dict):
             raise ProjectError("project caption settings must be an object")
         bubble = portrait_regions()["bubble"] if is_portrait else {"x": 0.31, "y": 0.46, "width": 0.65, "height": 0.12}
-        text = portrait_caption() if is_portrait else {"fontSize": 48, "wordsPerCaption": 6, "wordsPerLine": 3}
+        text = format_caption_defaults(portrait=is_portrait)
         options_base = {
             "layoutPreset": "speechBubble",
             "x": bubble["x"], "y": bubble["y"], "width": bubble["width"], "height": bubble["height"],
             "fontSize": max(8, round(text["fontSize"] * type_scale)),
             "wordsPerCaption": text["wordsPerCaption"], "wordsPerLine": text["wordsPerLine"],
+            "wordWrap": True,
             "wordHighlight": True, "wordHighlightColor": colors.get("accent", "#426BEB"), "wordHighlightAnimation": "pop",
             "color": colors.get("ink", "#172236"), "backgroundColor": "#FFFFFF",
             "bubble": {"tailSide": "left", "tailPosition": 0.35, "tailSizePixels": max(8, round(26 * type_scale)), "cornerRadiusPixels": max(8, round(28 * type_scale))},
-            **({"paddingPixels": max(0, round(text["paddingPixels"] * type_scale))} if is_portrait else {}),
+            **({"paddingPixels": max(0, round(text["paddingPixels"] * type_scale))} if "paddingPixels" in text else {}),
             **caption_options(profile, project),
         }
+        if any(keyword_emphasis_enabled(profile, project, scene) for scene in scenes):
+            require_aivee_version(package_root, "caption keyword emphasis and unbroken hyphenated words")
         caption_clips = []
-        scene_caption_fields = {"x", "y", "width", "height", "fontSize", "fontFamily", "fontWeight", "color", "backgroundColor", "wordHighlight", "wordHighlightColor", "wordHighlightAnimation", "textShadow", "textOutline", "bubble"}
+        scene_caption_fields = {
+            "x", "y", "width", "height", "fontSize", "fontFamily", "fontWeight", "color", "backgroundColor",
+            "wordHighlight", "wordHighlightColor", "wordHighlightAnimation", "textShadow", "textOutline", "bubble",
+            "wordsPerCaption", "wordsPerLine", "paddingPixels", "wordWrap", "emphasisColor",
+        }
         for scene_index, scene in enumerate(scenes):
             scene_start, scene_end = float(scene["start"]), float(scene["end"])
             scene_words = [item for item in words if scene_start <= float(item["start"]) < scene_end]
@@ -542,6 +598,9 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             options = {**options_base, **scene_options}
             if isinstance(options_base.get("bubble"), dict) and isinstance(scene_caption.get("bubble"), dict):
                 options["bubble"] = {**options_base["bubble"], **scene_caption["bubble"]}
+            options = prepare_caption_emphasis(
+                options, scene, enabled=keyword_emphasis_enabled(profile, project, scene),
+            )
             write_json(scene_options_path, options)
             _engine_cli(engine_command, project_path, ["timeline", "captions", str(transcript_path), str(caption_track_path), str(scene_options_path)])
             for clip in read_json(caption_track_path).get("clips", []):

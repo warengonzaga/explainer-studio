@@ -278,6 +278,12 @@ def setup(args) -> None:
     caption["wordHighlightColor"] = args.caption_keyword_color or caption["wordHighlightColor"]
     if not re.fullmatch(r"#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?", caption["wordHighlightColor"]):
         raise ProjectError("caption keyword color must be a six- or eight-digit hex color")
+    if args.caption_emphasis is not None:
+        caption["keywordEmphasis"] = args.caption_emphasis
+    if args.caption_emphasis_color:
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?", args.caption_emphasis_color):
+            raise ProjectError("caption emphasis color must be a six- or eight-digit hex color")
+        caption["emphasisColor"] = args.caption_emphasis_color
     placement = caption.get("placement", {})
     if not isinstance(placement, dict):
         raise ProjectError("caption placement must be an object")
@@ -382,7 +388,7 @@ def setup(args) -> None:
 
 
 def doctor(args) -> None:
-    from .engine import resolve_aivee
+    from .engine import aivee_version_gap, resolve_aivee
 
     missing = []
     lines = [f"python: {sys.version.split()[0]}"]
@@ -435,6 +441,13 @@ def doctor(args) -> None:
         version = read_json(manifest_path).get("version", "unknown") if manifest_path.is_file() else "unknown"
         checks["aivee"] = version
         lines.append(f"aivee: {version} ({package_root})")
+        gap = aivee_version_gap(version, feature="caption keyword emphasis and unbroken hyphenated words")
+        if gap:
+            lines.append(f"aivee features: {gap}")
+            missing.append(
+                "AIVEE 0.3.0+ for caption keyword emphasis and unbroken hyphenated words "
+                f"(installed {version}; run `npm install --global aivee@latest`)"
+            )
     except ProjectError as exc:
         lines.append(f"aivee: NOT READY ({exc})")
         missing.append("AIVEE (run `explainer install-engine`)")
@@ -1122,6 +1135,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--accent")
     p.add_argument("--caption-font", help="caption font family")
     p.add_argument("--caption-keyword-color", help="caption keyword highlight hex color")
+    emphasis = p.add_mutually_exclusive_group()
+    emphasis.add_argument("--caption-emphasis", dest="caption_emphasis", action="store_true", help="emphasize one caption keyword")
+    emphasis.add_argument("--no-caption-emphasis", dest="caption_emphasis", action="store_false", help="leave caption keywords unstyled")
+    p.set_defaults(caption_emphasis=None)
+    p.add_argument("--caption-emphasis-color", help="resting color for emphasized caption keywords")
     p.add_argument("--caption-x", type=float, help="caption left position from 0 to 1")
     p.add_argument("--caption-y", type=float, help="caption top position from 0 to 1")
     p.add_argument("--caption-width", type=float, help="caption width from 0 to 1")

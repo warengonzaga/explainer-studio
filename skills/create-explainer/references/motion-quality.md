@@ -7,7 +7,7 @@ The creator approved the open-source Reel v6 presentation as Studio's visual qua
 - Start with the original bundled presenter and the adaptable visual craft described below. The Waren avatar pack is an optional sample, not the default identity for every creator.
 - Show narration captions as compact speech bubbles beside the avatar, with the tail clearly pointing to the speaker. Use short timed phrases, not a full-screen subtitle bar or long paragraph inside the bubble. Use AIVEE's configurable `speechBubble` layout and tune its position and tail for the shot.
 - Keep the bubble's size and position consistent across adjacent phrases. Place it clear of the face, primary explanatory graphic, and platform controls; reposition it only when the composition requires it.
-- Highlight the currently spoken word subtly within the bubble when supported. Do not let word emphasis resize text into collisions or make the bubble jump.
+- Highlight the currently spoken word subtly within the bubble when supported. Also keep one keyword in the emphasis color for the whole caption. Do not let word emphasis resize text into collisions or make the bubble jump. Leave a hyphenated word unbroken.
 - Let the user replace the avatar, art direction, colors, or caption treatment. Defaults should make a topic-to-storyboard start easy without constraining the approved storyboard.
 
 ## Reels framing
