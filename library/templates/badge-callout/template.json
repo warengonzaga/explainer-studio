@@ -1,0 +1,8 @@
+{
+  "title": "Badge or callout",
+  "summary": "Reveal a short badge, then the line it calls out.",
+  "texts": {
+    "badge": "Note",
+    "callout": "One idea worth showing"
+  }
+}

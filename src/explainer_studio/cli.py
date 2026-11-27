@@ -799,21 +799,20 @@ def retime(args) -> None:
     )
 
 
-def scene_composition(args) -> None:
-    root = Path(args.project).expanduser().resolve()
+def _attach_scene_composition(root: Path, scene_number: int, relative: str) -> dict:
     data = studio_data(root)
     board = read_json(data / "storyboard.json")
     if not isinstance(board, dict) or not isinstance(board.get("scenes"), list):
         raise ProjectError("generate a storyboard before attaching a scene composition")
-    if args.scene < 1 or args.scene > len(board["scenes"]):
+    if scene_number < 1 or scene_number > len(board["scenes"]):
         raise ProjectError(f"scene must be between 1 and {len(board['scenes'])}")
-    if not isinstance(board["scenes"][args.scene - 1], dict):
-        raise ProjectError(f"scene {args.scene} must be an object")
-    path = project_file(root, args.html)
+    if not isinstance(board["scenes"][scene_number - 1], dict):
+        raise ProjectError(f"scene {scene_number} must be an object")
+    path = project_file(root, relative)
     relative_parts = path.relative_to(root).parts
     if relative_parts[:2] != ("compositions", "scenes") or path.name != "index.html" or not path.is_file():
         raise ProjectError("scene composition must be compositions/scenes/<name>/index.html")
-    scene = board["scenes"][args.scene - 1]
+    scene = board["scenes"][scene_number - 1]
     scene["composition"] = path.relative_to(root).as_posix()
     from .timing import scene_composition_hash, validate_storyboard
 
@@ -822,9 +821,52 @@ def scene_composition(args) -> None:
     board.pop("approval_hash", None)
     validate_storyboard(root, board)
     write_json(data / "storyboard.json", board)
+    return {"scene": scene_number, "composition": scene["composition"], "review_gate": "storyboard"}
+
+
+def templates_command(args) -> None:
+    from .templates import list_templates
+
+    rows = list_templates()
+    emit(args, {"templates": rows}, [], *(f"{row['id']}: {row['title']}" for row in rows))
+
+
+def add_template_command(args) -> None:
+    from .templates import add_scene_starter, discard_scene_starter, parse_text_assignments, storyboard_scene
+
+    root = Path(args.project).expanduser().resolve()
+    texts = parse_text_assignments(args.set)
+    if args.scene is None and args.duration is None:
+        raise ProjectError("pass --scene to use the storyboard duration, or --duration for an unattached starter")
+    if args.scene is not None and args.duration is not None:
+        raise ProjectError("scene duration comes from the storyboard; omit --duration")
+    scene = None
+    duration = args.duration
+    if args.scene is not None:
+        duration, scene = storyboard_scene(root, args.scene)
+    result = add_scene_starter(root, args.template, name=args.name, duration=duration, texts=texts, scene=scene)
+    if args.scene is None:
+        emit(args, result, [], f"scene starter written: {result['path']}")
+        return
+    try:
+        attached = _attach_scene_composition(root, args.scene, result["path"])
+    except Exception:
+        discard_scene_starter(root, result["path"])
+        raise
     emit(
         args,
-        {"scene": args.scene, "composition": scene["composition"], "review_gate": "storyboard"},
+        {**result, **attached},
+        [],
+        f"scene starter attached to scene {args.scene}: {result['path']}; review and approve the storyboard again",
+    )
+
+
+def scene_composition(args) -> None:
+    root = Path(args.project).expanduser().resolve()
+    result = _attach_scene_composition(root, args.scene, args.html)
+    emit(
+        args,
+        result,
         [],
         f"scene {args.scene} composition attached; review and approve the storyboard again",
     )
@@ -1145,6 +1187,16 @@ def main(argv: list[str] | None = None) -> int:
     p = add_command(sub, json_flags, "status", help="show project stage, files, and the next command")
     p.add_argument("project")
     p.set_defaults(handler=status_command)
+    p = add_command(sub, json_flags, "templates", help="list bundled HTML scene starters")
+    p.set_defaults(handler=templates_command)
+    p = add_command(sub, json_flags, "add-template", help="copy a scene starter into a project")
+    p.add_argument("project")
+    p.add_argument("template")
+    p.add_argument("--scene", type=int, help="attach the starter to this storyboard scene and use its duration")
+    p.add_argument("--name", help="scene folder name; defaults to the starter id")
+    p.add_argument("--duration", type=float, help="seconds, when the starter is not attached to a scene")
+    p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="replace one text field")
+    p.set_defaults(handler=add_template_command)
     p = add_command(sub, json_flags, "scene-composition", help="attach project HTML and GSAP to one storyboard scene")
     p.add_argument("project")
     p.add_argument("scene", type=int, help="one-based scene number")

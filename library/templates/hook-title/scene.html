@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="{{DOCUMENT_LANGUAGE}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width={{PROJECT_WIDTH}},height={{PROJECT_HEIGHT}}">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    #root { position: relative; width: 100%; height: 100%; overflow: hidden; color: var(--ink); font-family: sans-serif; }
+    .stage {
+      position: absolute; left: var(--stage-x); top: var(--stage-y); width: var(--stage-w); height: var(--stage-h);
+      container-type: size; display: flex; flex-direction: column; justify-content: center; gap: 4cqh; padding: 4cqh 5cqw;
+      overflow: hidden;
+    }
+    .stage p { margin: 0; max-width: 100%; min-height: 0; overflow: hidden; overflow-wrap: anywhere; flex: 0 1 auto; }
+    .kicker { color: var(--accent); font-size: 8cqmin; font-weight: 700; }
+    .title { font-size: 22cqmin; font-weight: 800; line-height: 1.05; }
+    .support { font-size: 11cqmin; font-weight: 700; line-height: 1.2; }
+  </style>
+</head>
+<body>
+  <main id="root" data-composition-id="root" data-start="0" data-duration="{{SCENE_DURATION}}" data-width="{{PROJECT_WIDTH}}" data-height="{{PROJECT_HEIGHT}}" style="--stage-x: {{STAGE_X}}%; --stage-y: {{STAGE_Y}}%; --stage-w: {{STAGE_W}}%; --stage-h: {{STAGE_H}}%; --ink: {{COLOR_INK}}; --paper: {{COLOR_BACKGROUND}}; --accent: {{COLOR_ACCENT}};">
+    <div class="stage">
+      <p class="kicker">{{TEXT_KICKER}}</p>
+      <p class="title">{{TEXT_TITLE}}</p>
+      <p class="support">{{TEXT_SUPPORT}}</p>
+    </div>
+  </main>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const root = document.getElementById("root");
+    const duration = Number(root.dataset.duration);
+    const at = (fraction) => duration * fraction;
+    const timeline = gsap.timeline({ paused: true });
+    const reveal = (selector, fraction) => {
+      timeline.fromTo(selector, { autoAlpha: 0, scale: 0.96 }, { autoAlpha: 1, scale: 1, duration: at(0.14), ease: "power2.out", transformOrigin: "50% 50%" }, at(fraction));
+    };
+    reveal(".kicker", 0.08);
+    reveal(".title", 0.24);
+    reveal(".support", 0.46);
+    timeline.to({}, { duration }, 0);
+    window.__timelines.root = timeline;
+  </script>
+</body>
+</html>
