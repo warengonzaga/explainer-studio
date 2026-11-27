@@ -506,7 +506,7 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             raise ProjectError("project caption settings must be an object")
         bubble = portrait_regions()["bubble"] if is_portrait else {"x": 0.31, "y": 0.46, "width": 0.65, "height": 0.12}
         text = portrait_caption() if is_portrait else {"fontSize": 48, "wordsPerCaption": 6, "wordsPerLine": 3}
-        caption_options = {
+        options_base = {
             "layoutPreset": "speechBubble",
             "x": bubble["x"], "y": bubble["y"], "width": bubble["width"], "height": bubble["height"],
             "fontSize": max(8, round(text["fontSize"] * type_scale)),
@@ -536,9 +536,9 @@ def render_with_engine(root: Path, output: Path, profile: dict, preview: bool = 
             scene_options = {key: value for key, value in scene_caption.items() if key in scene_caption_fields}
             if "fontFamily" in scene_options:
                 scene_options["fontFamily"] = font_stack(scene_options["fontFamily"])
-            options = {**caption_options, **scene_options}
-            if isinstance(caption_options.get("bubble"), dict) and isinstance(scene_caption.get("bubble"), dict):
-                options["bubble"] = {**caption_options["bubble"], **scene_caption["bubble"]}
+            options = {**options_base, **scene_options}
+            if isinstance(options_base.get("bubble"), dict) and isinstance(scene_caption.get("bubble"), dict):
+                options["bubble"] = {**options_base["bubble"], **scene_caption["bubble"]}
             write_json(scene_options_path, options)
             _engine_cli(engine_command, project_path, ["timeline", "captions", str(transcript_path), str(caption_track_path), str(scene_options_path)])
             for clip in read_json(caption_track_path).get("clips", []):

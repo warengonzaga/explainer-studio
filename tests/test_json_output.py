@@ -290,6 +290,26 @@ class JsonOutputTest(unittest.TestCase):
             self.assert_result(payload, "doctor", False)
             self.assertEqual(payload["next_steps"], steps, message)
 
+    def test_unexpected_error_with_json_returns_the_error_object(self):
+        self.write_profile()
+        root = self.home / "film"
+        root.mkdir()
+        with patch("explainer_studio.engine.render_with_engine", side_effect=RuntimeError("render boom")):
+            code, out, err = self.invoke("render", "--json", "--preview", str(root))
+            self.assertEqual((code, err), (1, ""))
+            payload = json.loads(out)
+            self.assert_result(payload, "render", False)
+            self.assertEqual(payload["error"], "render boom")
+            self.assertNotIn("Traceback", out)
+            with self.assertRaises(RuntimeError):
+                self.invoke("render", "--preview", str(root))
+        with patch("explainer_studio.engine.render_with_engine", side_effect=RuntimeError()):
+            code, out, err = self.invoke("render", "--json", str(root))
+        self.assertEqual((code, err), (1, ""))
+        payload = json.loads(out)
+        self.assert_result(payload, "render", False)
+        self.assertEqual(payload["error"], "RuntimeError")
+
     def test_storyboard_and_render_json_errors_exit_nonzero(self):
         missing = str(self.home / "missing-project")
         for command in ("storyboard", "render"):
