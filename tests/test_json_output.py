@@ -290,6 +290,68 @@ class JsonOutputTest(unittest.TestCase):
             self.assert_result(payload, "doctor", False)
             self.assertEqual(payload["next_steps"], steps, message)
 
+    def _healthy_doctor(self, **env):
+        import subprocess
+
+        package = self.home / "aivee"
+        package.mkdir(exist_ok=True)
+        (package / "package.json").write_text('{"version":"1.2.3"}', encoding="utf-8")
+
+        def which(name):
+            if name in {"ffmpeg", "ffprobe", "node", "npm"}:
+                return f"/usr/bin/{name}"
+            return None
+
+        def run(args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, stdout="v22.0.0\n")
+
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch("explainer_studio.cli.shutil.which", side_effect=which),
+            patch("explainer_studio.cli.subprocess.run", side_effect=run),
+            patch("explainer_studio.engine.resolve_aivee", return_value=(["aivee"], str(package))),
+            patch("explainer_studio.engine._browser_env", return_value={"HYPERFRAMES_BROWSER_PATH": "/usr/bin/chrome"}),
+        ):
+            return self.invoke("doctor", "--json")
+
+    def test_doctor_still_suggests_setup_when_rhubarb_path_is_set(self):
+        binary = self.home / "custom-rhubarb"
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        code, out, err = self._healthy_doctor(RHUBARB_PATH=str(binary))
+        self.assertEqual(err, "")
+        payload = json.loads(out)
+        self.assert_result(payload, "doctor", True)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["data"]["rhubarb"], str(binary.resolve()))
+        self.assertIn(command_step("setup"), payload["next_steps"])
+
+    def test_doctor_reports_a_missing_rhubarb_path_instead_of_amplitude(self):
+        code, out, err = self._healthy_doctor(RHUBARB_PATH="/missing/rhubarb")
+        self.assertEqual(err, "")
+        payload = json.loads(out)
+        self.assert_result(payload, "doctor", False)
+        self.assertEqual(code, 1)
+        self.assertIsNone(payload["data"]["rhubarb"])
+        self.assertIn("/missing/rhubarb", payload["error"])
+        self.assertNotIn("amplitude", json.dumps(payload))
+        self.assertIn(command_step("setup"), payload["next_steps"])
+
+    def test_doctor_prefers_the_profile_rhubarb_path_over_the_environment(self):
+        profile_binary = self.home / "profile-rhubarb"
+        env_binary = self.home / "env-rhubarb"
+        profile_binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        env_binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        (self.home / "profile.json").write_text(json.dumps({
+            "brand": "Acme", "rhubarb_path": str(profile_binary),
+        }), encoding="utf-8")
+        code, out, err = self._healthy_doctor(RHUBARB_PATH=str(env_binary))
+        self.assertEqual(err, "")
+        payload = json.loads(out)
+        self.assert_result(payload, "doctor", True)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["data"]["rhubarb"], str(profile_binary.resolve()))
+        self.assertNotIn(command_step("setup"), payload["next_steps"])
+
     def test_storyboard_and_render_json_errors_exit_nonzero(self):
         missing = str(self.home / "missing-project")
         for command in ("storyboard", "render"):
@@ -498,7 +560,7 @@ class JsonOutputTest(unittest.TestCase):
         self.assert_result(payload, "export-avatar", True)
         self.assertEqual(payload["data"], result)
         self.assertEqual(payload["next_steps"], [])
-        export.assert_called_once_with(Path("/tmp/studio"), Path("/tmp/native"), {"brand": "Acme"})
+        export.assert_called_once_with(Path("/tmp/studio"), Path("/tmp/native"), {"brand": "Acme"}, scale=1.0)
 
     def test_render_infers_portrait_from_project_format(self):
         self.write_profile()

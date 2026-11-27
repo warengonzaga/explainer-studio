@@ -18,7 +18,7 @@ Explainer Studio is an agent plugin for creating narrated explainer videos from 
 
 Supported narration sources are a recording file supplied by the user, or a connected ElevenLabs, Higgsfield, or Suno capability in Codex or Claude Code. Studio guides provider use but does not call their APIs directly or store provider credentials. Setup defaults to asking which source to use each time, or you can save a preferred source. Provider generation may consume paid credits; check the selected provider's account costs before generating. See the [voiceover skill](skills/voiceover/SKILL.md) and provider guides for setup. Local text-to-speech is not supported yet.
 
-Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Without Rhubarb, mouth timing follows voice loudness. Automatic transcription requires its optional runtime.
+Rhubarb Lip Sync can provide phonetic mouth cues mapped to the five bundled mouth states. Closed-lip cues, including puckered W/UW/OW shapes, use the closed mouth. Without Rhubarb, mouth timing follows voice loudness at the project frame rate: the mouth opens on syllable peaks, closes in the valleys, and does not stay open for a long run. Automatic transcription requires its optional runtime.
 
 For creative planning and animation authoring, our project recommendations are:
 
@@ -44,6 +44,8 @@ Requirements: Python 3.11+, Node.js 22+ with npm, FFmpeg, ffprobe, and Chrome or
 ```bash
 python scripts/explainer.py bootstrap
 ```
+
+`bootstrap --rhubarb` is optional. On x86_64 Linux and macOS it downloads Rhubarb Lip Sync 1.14.0 into the Studio home and later commands use that executable as `RHUBARB_PATH` unless you already set one. Other platforms can pass an existing binary with `setup --rhubarb-path`.
 
 For normal use, install the plugin in Codex or Claude Code and invoke **Set up Explainer Studio**. Setup bootstraps Studio's Python dependencies, checks the machine, reuses a compatible global AIVEE CLI, or runs `npm install --global aivee@latest` when AIVEE is missing. AIVEE is shared globally with other Studios; Studio does not keep a private copy or silently replace an incompatible global installation. If an installed version is incompatible, update it with `npm install --global aivee@latest` and rerun setup. The default workspace is `~/AIVEE`; it contains `Studios/Explainer/Library/Avatar Packs` and `Studios/Explainer/Projects`. The starter profile defaults to the **Explainer Studio** brand, English, ask-before-generation voice selection, the bundled Emo robot avatar, and default colors. A Rhubarb executable is optional for phonetic mouth cues. Provider access is managed by the active Codex or Claude Code host and is not saved to the profile.
 
@@ -89,7 +91,7 @@ Use the bundled **Emo** robot avatar by default, choose the **Waren** sample ava
 
 `scene-composition <project> <scene-number> <html-path>` attaches a project-owned AIVEE HTML/GSAP composition to a storyboard scene. Keep the composition and its local assets in `compositions/scenes/<name>/`; it replaces that scene's `visual_cues` and renders on its narration timing under Studio's avatar and captions. The command records a hash of the scene folder and clears storyboard approval. Reattach and review the storyboard after changing any file in that folder.
 
-To continue an approved Studio avatar performance in a separate native AIVEE project, run `explainer export-avatar <studio-project> <aivee-project>`. Studio writes transparent pose/mouth/blink sprites, `timing.json`, `words.json`, and a narration copy under the target project's `studio-data/explainer/avatar-exports/`; it registers the narration and sprites with AIVEE. The command requires an approved storyboard and preserves the Studio canvas placement in `avatar_placement`.
+To continue an approved Studio avatar performance in a separate native AIVEE project, run `explainer export-avatar <studio-project> <aivee-project>`. Add `--scale 1.13` when the native scene needs larger sprite pixels than the Studio avatar box. Studio writes transparent pose/mouth/blink sprites, `timing.json`, `words.json`, and a narration copy under the target project's `studio-data/explainer/avatar-exports/`; it registers the narration and sprites with AIVEE. The command requires an approved storyboard and preserves the Studio canvas placement in `avatar_placement`. `sprite_scale` records the pixel multiplier.
 
 `safe-check <project>` samples visible text and graphic bounds in every attached portrait HTML composition against the approved Reels safe area. `check <project> <video>` includes the same composition check and scans decoded frames for isolated A-B-A flashes. The flicker scan targets one-frame flashes; it does not replace watching the encoded video and reviewing its motion.
 

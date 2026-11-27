@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import shutil
 import tempfile
@@ -16,7 +17,13 @@ from .engine import _check_reels_box, avatar_intervals, avatar_keyframes, ensure
 from .timing import validate_storyboard, validate_words
 
 
-def export_avatar(source: Path, target: Path, profile: dict) -> dict:
+def _sprite_scale(scale: float) -> float:
+    if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not math.isfinite(scale) or not 0.25 <= scale <= 4:
+        raise ProjectError("avatar export scale must be a number from 0.25 to 4")
+    return float(scale)
+
+
+def export_avatar(source: Path, target: Path, profile: dict, *, scale: float = 1.0) -> dict:
     """Write Studio avatar sprites and timing into a separate AIVEE project."""
     source = source.expanduser().resolve()
     target = target.expanduser()
@@ -59,6 +66,7 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
         raise ProjectError("Studio project has invalid canvas settings") from exc
     if width < 320 or height < 240 or not 1 <= fps <= 60:
         raise ProjectError("Studio project has invalid canvas settings")
+    scale = _sprite_scale(scale)
 
     # Studio owns files in this namespace; AIVEE owns the rest of its project.
     studio_root = target / "studio-data"
@@ -104,12 +112,17 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
             keys = avatar_keyframes(source, project, board, profile, duration, fps, Path(temporary))
         intervals = avatar_intervals(keys, fps, duration)
 
+        sprite_width = max(1, round(box[2] * scale))
+        sprite_height = max(1, round(box[3] * scale))
         sprite_records = {}
         for index, (pose, mouth, blink) in enumerate(sorted(set(keys)), start=1):
             image_name = f"avatar-{index:03d}.png"
             image_path = sprites_dir / image_name
-            image = Image.new("RGBA", (box[2], box[3]), (0, 0, 0, 0))
-            draw_avatar(image, source, project, pose, mouth, 0.05 if blink else 1.0, (0, 0, box[2], box[3]))
+            image = Image.new("RGBA", (sprite_width, sprite_height), (0, 0, 0, 0))
+            draw_avatar(
+                image, source, project, pose, mouth, 0.05 if blink else 1.0,
+                (0, 0, sprite_width, sprite_height), fit_scale=scale,
+            )
             image.save(image_path)
             sprite_records[(pose, mouth, blink)] = {"file": f"sprites/{image_name}", "asset_id": None, "asset_path": None}
 
@@ -152,6 +165,8 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
             "schema_version": 1,
             "duration_seconds": duration,
             "canvas": {"width": width, "height": height, "fps": fps},
+            "sprite_scale": scale,
+            "sprite_size": {"width": sprite_width, "height": sprite_height},
             "avatar_placement": {"x": box[0] / width, "y": box[1] / height, "width": box[2] / width, "height": box[3] / height},
             "narration": {"file": voice_copy.name, "asset_id": voice_asset_id, "asset_path": voice_asset_path},
             "words_file": "words.json",
@@ -165,7 +180,8 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
             "the source word timings, and a copy of the narration. The narration and PNG states are also registered "
             "with AIVEE; use each interval's `asset_path` in a native scene and switch states at `start`/`end`.\n\n"
             "`timing.json` is the source of truth. Times are seconds from the beginning of the narration. "
-            "Place each sprite using `avatar_placement` to match the Studio composition.\n",
+            "Place each sprite using `avatar_placement` to match the Studio composition. "
+            "`sprite_scale` multiplies the PNG pixel size without moving that placement.\n",
             encoding="utf-8",
         )
     except Exception:
@@ -178,6 +194,8 @@ def export_avatar(source: Path, target: Path, profile: dict) -> dict:
         "timing": str(output / "timing.json"),
         "sprites": len(sprite_records),
         "intervals": len(intervals),
+        "scale": scale,
+        "sprite_size": {"width": sprite_width, "height": sprite_height},
         "voice_asset": voice_asset_path,
         "words": str(output / "words.json"),
     }

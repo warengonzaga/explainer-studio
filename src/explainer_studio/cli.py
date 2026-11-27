@@ -134,7 +134,15 @@ def bootstrap(args) -> None:
     if result.returncode:
         detail = (result.stderr or result.stdout).strip()
         raise ProjectError(f"could not install Studio dependencies: {detail[-1200:]}")
-    emit(args, {"python": str(python)}, [command_step("doctor")], f"managed Studio environment ready: {python}")
+    data = {"python": str(python)}
+    lines = [f"managed Studio environment ready: {python}"]
+    if args.rhubarb:
+        from .rhubarb import install_rhubarb
+
+        binary = install_rhubarb()
+        data["rhubarb"] = str(binary)
+        lines.append(f"rhubarb: {binary}")
+    emit(args, data, [command_step("doctor")], *lines)
 
 
 def avatar_preview_command(args) -> None:
@@ -418,9 +426,9 @@ def doctor(args) -> None:
         lines.append("faster-whisper: available")
     except ImportError:
         lines.append("faster-whisper: optional, needed for automatic word timing")
-    path = studio_home() / "profile.json"
-    lines.append(f"profile: {path if path.is_file() else 'not set up'}")
-    checks["profile"] = str(path) if path.is_file() else None
+    profile_path = studio_home() / "profile.json"
+    lines.append(f"profile: {profile_path if profile_path.is_file() else 'not set up'}")
+    checks["profile"] = str(profile_path) if profile_path.is_file() else None
     try:
         _, package_root = resolve_aivee()
         manifest_path = Path(package_root) / "package.json"
@@ -439,15 +447,32 @@ def doctor(args) -> None:
     lines.append(f"render browser: {browser or 'MISSING (install Chrome or Edge)'}")
     if not browser:
         missing.append("Chrome or Edge")
-    profile = read_json(path) if path.is_file() else {}
-    rhubarb = os.environ.get("RHUBARB_PATH") or profile.get("rhubarb_path") or shutil.which("rhubarb")
-    if rhubarb and not Path(rhubarb).expanduser().is_file():
-        rhubarb = shutil.which(rhubarb)
-    rhubarb_label = str(Path(rhubarb).expanduser().resolve()) if rhubarb else "optional; amplitude lip sync will be used"
-    checks["rhubarb"] = str(Path(rhubarb).expanduser().resolve()) if rhubarb else None
+    from .audio import resolve_rhubarb
+
+    profile = read_json(profile_path) if profile_path.is_file() else {}
+    configured = profile.get("rhubarb_path")
+    # Match phonetic_mouth_track: a profile path wins, then RHUBARB_PATH. Either one
+    # is used as given, so a missing file must not be reported as the amplitude fallback.
+    chosen = configured if isinstance(configured, str) and configured else None
+    if chosen is None:
+        chosen = os.environ.get("RHUBARB_PATH") or None
+    required_gaps = list(missing)
+    if chosen:
+        candidate = Path(chosen).expanduser()
+        resolved = str(candidate.resolve()) if candidate.is_file() else shutil.which(chosen)
+        rhubarb = str(Path(resolved).expanduser().resolve()) if resolved else None
+        if rhubarb:
+            rhubarb_label = rhubarb
+        else:
+            rhubarb_label = f"MISSING ({chosen})"
+            missing.append(f"Rhubarb ({chosen})")
+    else:
+        rhubarb = resolve_rhubarb()
+        rhubarb_label = rhubarb if rhubarb else "optional; amplitude lip sync will be used"
+    checks["rhubarb"] = rhubarb
     lines.append(f"rhubarb: {rhubarb_label}")
     checks["missing"] = missing
-    steps = _doctor_steps(missing, path.is_file(), install_aivee=install_aivee)
+    steps = _doctor_steps(required_gaps, profile_path.is_file(), install_aivee=install_aivee)
     if missing:
         if not args.json:
             for line in lines:
@@ -837,7 +862,7 @@ def attach_avatar(args) -> None:
 def export_avatar_command(args) -> None:
     from .avatar_export import export_avatar
 
-    result = export_avatar(Path(args.project), Path(args.engine_project), load_profile())
+    result = export_avatar(Path(args.project), Path(args.engine_project), load_profile(), scale=args.scale)
     emit(args, result, [], f"avatar export written: {result['output']}")
 
 
@@ -1033,6 +1058,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(handler=doctor)
     p = add_command(sub, json_flags, "bootstrap", help="create the managed Studio Python environment")
     p.add_argument("--transcribe", action="store_true", help="also install optional faster-whisper dependencies")
+    p.add_argument("--rhubarb", action="store_true", help="also install optional Rhubarb Lip Sync 1.14.0 on Linux or macOS")
     p.set_defaults(handler=bootstrap)
     p = add_command(sub, json_flags, "install-engine", help="install AIVEE globally if missing, or verify the shared CLI")
     p.set_defaults(handler=install_engine)
@@ -1090,6 +1116,7 @@ def main(argv: list[str] | None = None) -> int:
     p = add_command(sub, json_flags, "export-avatar", help="export avatar sprites, timing, voice, and words to an AIVEE project")
     p.add_argument("project", help="approved Studio project")
     p.add_argument("engine_project", help="existing native AIVEE project")
+    p.add_argument("--scale", type=float, default=1.0, help="sprite size multiplier from 0.25 to 4 (default: 1)")
     p.set_defaults(handler=export_avatar_command)
     p = add_command(sub, json_flags, "avatar-preview", help="make a contact sheet of avatar poses and mouth shapes")
     p.add_argument("project")
