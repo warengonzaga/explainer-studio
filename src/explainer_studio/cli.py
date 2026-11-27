@@ -451,11 +451,12 @@ def doctor(args) -> None:
 
     profile = read_json(path) if path.is_file() else {}
     configured = profile.get("rhubarb_path")
-    rhubarb = resolve_rhubarb(
-        os.environ.get("RHUBARB_PATH"),
-        configured if isinstance(configured, str) else None,
-        shutil.which("rhubarb"),
-    )
+    explicit = os.environ.get("RHUBARB_PATH") or (configured if isinstance(configured, str) else None)
+    if explicit:
+        path = Path(explicit).expanduser()
+        rhubarb = str(path.resolve()) if path.is_file() else shutil.which(explicit)
+    else:
+        rhubarb = resolve_rhubarb()
     rhubarb_label = rhubarb if rhubarb else "optional; amplitude lip sync will be used"
     checks["rhubarb"] = rhubarb
     lines.append(f"rhubarb: {rhubarb_label}")

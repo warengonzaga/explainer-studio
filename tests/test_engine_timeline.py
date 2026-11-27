@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -136,6 +137,22 @@ class EngineTimelineTest(unittest.TestCase):
         convert_audio.assert_called_once()
         self.assertEqual(states, ["closed"] * 3 + ["rest"] * 3)
         self.assertIn("--recognizer", run_rhubarb.call_args.args[0])
+
+    def test_missing_rhubarb_path_is_not_replaced_by_the_bootstrap_install(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            installed = home / "rhubarb" / "1.14.0" / "rhubarb"
+            installed.parent.mkdir(parents=True)
+            installed.write_text("#!/bin/sh\necho installed\n", encoding="utf-8")
+            installed.chmod(0o755)
+            with patch.dict(os.environ, {"EXPLAINER_STUDIO_HOME": str(home), "RHUBARB_PATH": "/missing/rhubarb"}), patch(
+                "explainer_studio.audio.command", return_value="ffmpeg",
+            ), patch("explainer_studio.audio.run"), patch(
+                "explainer_studio.audio.subprocess.run", side_effect=FileNotFoundError("missing"),
+            ) as run_rhubarb:
+                with self.assertRaises(ProjectError):
+                    phonetic_mouth_track(home / "voice.mp3", 0.4, home, None)
+        self.assertEqual(run_rhubarb.call_args.args[0][0], "/missing/rhubarb")
 
     def test_avatar_intervals_merge_matching_frames_and_trim_final_frame(self):
         keys = [

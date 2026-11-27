@@ -37,17 +37,11 @@ def _check_rate(rate: int) -> None:
         raise ProjectError("Mouth cue rate must be an integer between 1 and 120")
 
 
-def resolve_rhubarb(*candidates: str | None) -> str | None:
-    """Return the first usable Rhubarb executable, including the optional bootstrap install."""
-    for item in candidates:
-        if not item:
-            continue
-        path = Path(item).expanduser()
-        if path.is_file():
-            return str(path.resolve())
-        found = shutil.which(item)
-        if found:
-            return found
+def resolve_rhubarb() -> str | None:
+    """Return Rhubarb from PATH, then the optional bootstrap install."""
+    found = shutil.which("rhubarb")
+    if found:
+        return found
     installed = installed_rhubarb_path()
     if installed.is_file():
         return str(installed.resolve())
@@ -195,7 +189,7 @@ def phonetic_mouth_track(
     voice: Path, duration: float, work_dir: Path, executable: str | None = None, rate: int = 15,
 ) -> list[str] | None:
     """Return Rhubarb mouth states, or None when its optional CLI is unavailable."""
-    configured = executable or resolve_rhubarb(os.environ.get("RHUBARB_PATH"), shutil.which("rhubarb"))
+    configured = executable or os.environ.get("RHUBARB_PATH") or resolve_rhubarb()
     if not configured:
         return None
     work_dir.mkdir(parents=True, exist_ok=True)
