@@ -290,12 +290,12 @@ class JsonOutputTest(unittest.TestCase):
             self.assert_result(payload, "doctor", False)
             self.assertEqual(payload["next_steps"], steps, message)
 
-    def _healthy_doctor(self, **env):
+    def _healthy_doctor(self, version="1.2.3", **env):
         import subprocess
 
         package = self.home / "aivee"
         package.mkdir(exist_ok=True)
-        (package / "package.json").write_text('{"version":"1.2.3"}', encoding="utf-8")
+        (package / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
 
         def which(name):
             if name in {"ffmpeg", "ffprobe", "node", "npm"}:
@@ -313,6 +313,16 @@ class JsonOutputTest(unittest.TestCase):
             patch("explainer_studio.engine._browser_env", return_value={"HYPERFRAMES_BROWSER_PATH": "/usr/bin/chrome"}),
         ):
             return self.invoke("doctor", "--json")
+
+    def test_doctor_reports_an_aivee_older_than_caption_emphasis(self):
+        code, out, err = self._healthy_doctor(version="0.2.0")
+        self.assertEqual(err, "")
+        payload = json.loads(out)
+        self.assert_result(payload, "doctor", False)
+        self.assertEqual(code, 1)
+        self.assertIn("0.3.0", payload["error"])
+        self.assertIn("npm install --global aivee@latest", payload["error"])
+        self.assertIn("caption keyword emphasis", payload["error"])
 
     def test_doctor_still_suggests_setup_when_rhubarb_path_is_set(self):
         binary = self.home / "custom-rhubarb"

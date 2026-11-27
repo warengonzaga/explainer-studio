@@ -9,6 +9,7 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from .captions import emphasis_words_for_scene, pick_emphasis_keywords
 from .common import ProjectError, file_hash, probe_duration, project_file, read_json, studio_file, write_json
 
 
@@ -184,7 +185,7 @@ def build_storyboard(root: Path) -> dict:
             "start": boundaries[index], "end": boundaries[index + 1],
             "headline": headline, "body": paragraph,
             "pose": ["idle", "present", "point_right", "celebrate"][index % 4],
-            "emphasis": paragraph.split()[0].strip(".,;:!?—-"),
+            "emphasis": pick_emphasis_keywords(headline, paragraph),
             "emphasis_at": round(float(words[positions[index][0]]["start"]), 3),
             "asset": None,
         })
@@ -269,6 +270,7 @@ def validate_storyboard(root: Path, board: dict, duration: float | None = None) 
             width, height = float(cue.get("width", 0.38)), float(cue.get("height", 0.2))
             if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > 1 or y + height > 1:
                 raise ProjectError(f"scene {index + 1} visual cue {cue_index + 1} must fit inside the frame")
+        emphasis_words_for_scene(scene)
         if scene.get("emphasis_at") is not None:
             cue = float(scene["emphasis_at"])
             if not math.isfinite(cue) or cue < start or cue >= end:
